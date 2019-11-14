@@ -1,0 +1,24 @@
+/**
+ * Copyright (c) 2018 Sebastian Altenhuber, Patrick Humme
+ * 
+ * @author Sebastian Altenhuber <sebastian.altenhuber@gmail.com>
+ * @author Patrick Humme <pathumme@gmail.com>
+ */
+<error>
+  <h3>Error: { error.status } - { error.statusText }</h3>
+  <p>{ explanation }</p>
+  <script type="es6">
+    const tag = this;
+    tag.error = opts.error;
+    tag.explanation = '';
+
+    tag.on('mount', () => {
+      tag.error = opts.error;
+      if (tag.error.status === 404) {
+        tag.explanation = 'The dataset you have requested could not be found on the server. It either has been deleted or moved. Please try browsing available datasets.';
+      }
+      tag.update();
+    });
+  </script>
+</error>
+

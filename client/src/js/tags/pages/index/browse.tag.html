@@ -1,0 +1,294 @@
+/**
+ * Copyright (c) 2018 Sebastian Altenhuber, Patrick Humme
+ * 
+ * @file Browse datasets
+ * @author Sebastian Altenhuber <sebastian.altenhuber@gmail.com>
+ * @author Patrick Humme <pathumme@gmail.com>
+ */
+<index-browse>
+  <div if={ loading } class="c-alerts c-alerts--topright">
+    <div class="c-alert c-alert--info">Loading Data...</div>
+  </div>
+  <h2 class="c-heading c-heading--medium">
+    Browse Datasets<i if={ loading } class="fa fa-circle-o-notch fa-spin fa-fw"></i>
+  </h2>
+  <div class="o-grid o-grid--small-full o-grid--large-fit">
+    <div class="o-grid__cell">
+      <label class="c-label">
+        Sort By:
+        <select class="c-field" onchange={ sortFieldEventHandler }>
+          <option each={ sortableFields }
+            value={ identifier }
+            selected={ identifier === sortFieldId }>
+            { description }
+          </option> 
+        </select>
+      </label>
+    </div>
+    <div class="o-grid__cell">
+      <div class="c-label">
+        Sort Order:
+        <select class="c-field" onchange={ sortOrderEventHandler }>
+          <option value="asc" selected={ sortOrder === 'asc' }>Ascending</option>
+          <option value="desc" selected={ sortOrder === 'desc' }>Descending</option>
+        </select>
+      </div>
+    </div>
+    <div class="o-grid__cell">
+      <div class="c-label">
+        Display:
+        <select class="c-field" onchange={ entryNumEventHandler }>
+          <option each={ val in displayOptions }
+            value={ val }
+            selected={ val === numEntriesDisplayed }>
+            { val }
+          </option>
+        </select>
+      </div>
+    </div>
+  </div>
+  <div class="o-grid o-grid--wrap">
+    <div class="o-grid__cell o-grid__cell--width-60@large o-grid__cell--offset-20@large o-grid__cell--width-100@xsmall">
+      <pagination if={ display.length > 0}
+        pagenumber={ pageNumber }
+        pagenumeventhandler={ pageNumEventHandler }
+        numpages={ numPages }
+        pagesvisible={ pagesVisible }/>
+    </div>
+    <div class="o-grid__cell o-grid__cell--width-100">
+      <div class="c-card" if={ loading }>
+        <div class="c-card__item u-high" style="text-align: center;">
+          <i class="fa fa-circle-o-notch fa-spin fa-fw"></i> Please wait while data is loading! 
+        </div>
+      </div>
+      <div class="c-card" if={ !loading && display.length === 0 }>
+        <div class="c-card__item c-card__item--info">
+          <p class="c-paragraph u-center" style="text-align:center">
+            There are currently no datasets to browse.
+          </p>
+        </div>
+      </div>
+      <div each={ dataset in display } class="c-card">
+        <div class="c-card__item u-high c-card__item--divider">
+          <a href="/v/{ dataset.id }" onclick={ navigate }>{ dataset.name }</a>
+        </div>  
+        <div class="c-card__item">
+          <div class="o-grid o-grid--small-full o-grid--large-fit">
+            <div class="o-grid__cell">
+              <p class="c-paragraph">
+                <span class="c-text--loud">Title:</span>
+                { dataset.name }
+              </p>
+              <p class="c-paragraph">
+                <span class="c-text--loud">Description:</span> 
+                { dataset.description }
+              </p>
+              <p class="c-paragraph">
+              <span class="c-text--loud">Projection:</span>
+                { dataset.projection }
+              </p>
+            </div>
+            <div class="o-grid__cell">
+              <p class="c-paragraph">
+                <span class="c-text--loud">
+                  URL: 
+                </span>
+                <a href={ dataset.url }>{ dataset.url }</a>
+              </p>
+              <p class="c-paragraph">
+                <span class="c-text--loud">
+                  Created At: 
+                </span>
+                { new Date(dataset.createdAt).toDateString() }</p>
+              <p class="c-paragraph">
+                <span class="c-text--loud">
+                  Updated At:
+                </span>
+                { new Date(dataset.updatedAt).toDateString() }
+              </p>
+            </div>
+          </div>
+        </div>  
+      </div>
+    </div>
+    <div class="o-grid__cell o-grid__cell--width-60@large o-grid__cell--offset-20@large o-grid__cell--width-100@xsmall">
+      <pagination if={ display.length > 0 }
+        pagenumber={ pageNumber }
+        pagenumeventhandler={ pageNumEventHandler }
+        numpages={ numPages }
+        pagesvisible={ pagesVisible }/>
+    </div>
+  </div>
+  <script type="es6">
+    const tag = this;
+
+    // Initialize default values
+    tag.displayOptions = [1, 5, 10, 15, 20, 25];
+
+    tag.display = [];
+    tag.pagesVisible = [1];
+    tag.loading = true;
+
+    // Sensible options for sorting datasets
+    tag.sortableFields = [
+      {
+        identifier: 'name', description: 'Name',
+      },
+      {
+        identifier: 'createdAt', description: 'Creation Date',
+      },
+      {
+        identifier: 'updatedAt', description: 'Update Date',
+      },
+    ];
+
+    tag.navigate = navigate;
+
+    // Add event handling functions to tag
+    tag.pageNumEventHandler = pageNumEventHandler;
+    tag.sortOrderEventHandler = sortOrderEventHandler;
+    tag.sortFieldEventHandler = sortFieldEventHandler;
+    tag.entryNumEventHandler = entryNumEventHandler;
+
+
+    // Before mount, get query parameters from controller, sanitize them
+    // and fall back to default if not available / not sensible
+    tag.on('before-mount', () => {
+      const {
+        p,
+        lim,
+        sorton,
+        order,
+      } = opts.controller.query;
+      tag.pageNumber = (p && !Number.isNaN(p) && +p > 0) ? +p : 1;
+      if (lim && tag.displayOptions.includes(+lim)) {
+        tag.numEntriesDisplayed = +lim;
+      } else {
+        tag.numEntriesDisplayed = 10;
+      }
+      if (order && (order === 'asc' || order === 'desc')) {
+        tag.sortOrder = order;
+      } else {
+        tag.sortOrder = 'desc';
+      }
+      if (tag.sortableFields.map(field => field.identifier).includes(sorton)) {
+        tag.sortFieldId = sorton;
+      } else {
+        tag.sortFieldId = tag.sortableFields[1].identifier;
+      }
+    });
+
+    // On tag mount, get total number of datasets and data
+    tag.on('mount', () => {
+      opts.controller.getDataCount()
+        .then((response) => {
+          tag.numDatasets = response.count;
+          calculateNumPages();
+        }).then(() => {
+          loadDatasets();
+        });
+    });
+    /**
+     * Event handler for sort on select menu
+     * @param {Event} evt - Select element change event
+     */
+    function sortFieldEventHandler(evt) {
+      if (tag.sortFieldId === evt.target.value) return;
+      tag.sortFieldId = evt.target.value;
+      loadDatasets();
+    }
+
+    /**
+     * Event handler for sort order select menu
+     * @param {Event} evt - Select element change event
+     */
+    function sortOrderEventHandler(evt) {
+      if (tag.sortOrder === evt.target.value) return;
+      tag.sortOrder = evt.target.value;
+      loadDatasets();
+    }
+
+    /**
+     * Event handler for entry number display select menu
+     * @param {Event} evt - Select element change event
+     */
+    function entryNumEventHandler(evt) {
+      if (evt.target.value === tag.entriesDisplayed) return;
+      tag.numEntriesDisplayed = +evt.target.value;
+      calculateNumPages();
+      loadDatasets();
+    }
+    /**
+     * Update visible pages for pagination
+     * @param {Number} numPages - Total count of pages
+     * @param {Number} pageNumber - Current page number
+     */
+    function updatePagesVisible(numPages = tag.numPages, pageNumber = tag.pageNumber) {
+      let pages = [];
+      for (let i = 1; i <= numPages; i += 1) {
+        pages.push(i);
+      }
+      if (pages.length > 2) {
+        if (tag.pageNumber === 1) {
+          pages = pages.slice(0, 3);
+        } else if (tag.pageNumber === numPages) {
+          pages = pages.slice(-3);
+        } else {
+          pages = pages.slice(pageNumber - 2, pageNumber + 1);
+        }
+      }
+      tag.pagesVisible = pages;
+      tag.update();
+    }
+
+    /**
+     * Function to calculate number of pages
+     * @param {Number} [totalCount] - Total count of items
+     * @param {Number} [countDisplayed] - Total count of items
+     */
+    function calculateNumPages(totalCount = tag.numDatasets, countDisplayed = tag.numEntriesDisplayed) {
+      tag.numPages = Math.ceil(totalCount / countDisplayed);
+    }
+
+    /**
+     * Event handler for page turning
+     * @param {Event} evt - Click event for page turning
+     */
+    function pageNumEventHandler(evt) {
+      tag.pageNumber = +evt.target.value;
+      updatePagesVisible();
+      loadDatasets();
+    }
+
+    function loadDatasets(
+      pageNumber = tag.pageNumber,
+      numEntriesDisplayed = tag.numEntriesDisplayed,
+      sortFieldId = tag.sortFieldId,
+      sortOrder = tag.sortOrder,
+    ) {
+      riot.route(`/browse?p=${pageNumber}&lim=${numEntriesDisplayed}&sorton=${sortFieldId}&order=${sortOrder.toLowerCase()}`);
+      tag.update({ loading: true });
+      opts.controller.loadData(pageNumber, numEntriesDisplayed, sortFieldId, (sortOrder === 'ASC') ? 1 : 0)
+        .then((datasets) => {
+          if (datasets.length === 0) {
+            tag.numDatasets = 0;
+          } else {
+            tag.display = datasets;
+            tag.numDisplayed = (tag.numDatasets < tag.numEntriesDisplayed)
+              ? tag.numDatasets
+              : tag.numEntriesDisplayed;
+            updatePagesVisible();
+          }
+          tag.update({ loading: false });
+        });
+    }
+    /**
+     * Navigate to link
+     * @param {Event} evt - Click event.
+     */
+    function navigate(evt) {
+      evt.preventDefault();
+      riot.route(`/v/${evt.item.dataset.id}`);
+    }
+  </script>
+</index-browse>

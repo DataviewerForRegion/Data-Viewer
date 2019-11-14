@@ -1,0 +1,668 @@
+/**
+ * @file Implements a boxplot in a riot tag
+ * @author Sebastian Altenhuber <sebastian.altenhuber@gmail.com>
+ * @author Patrick Humme <pathumme@gmail.com>
+ */
+<chart-boxplot>
+  <div class="o-grid o-grid--small-full o-grid--large-fit">
+    <div class="o-grid__cell">
+      <checkbox-dropdown-select ref="dropdown-select"/>
+    </div>
+    <div class="o-grid__cell">
+      <label class="c-toggle" style="padding:3em;">
+        <input type="checkbox" checked onclick={ toggleOutlierLabels }>
+        <div class="c-toggle__track">
+          <div class="c-toggle__handle"></div>
+        </div>
+        Display Outlier Labels
+      </label>
+    </div>
+    <div class="o-grid__cell">
+      <label class="c-label o-form-element">
+        Outlier Label Attribute
+        <select class="c-field" onchange={ setOutlierLabels }>
+          <option each={ labelAttributes }
+            value={ key }>
+            { name }
+          </option>
+        </select>
+      </label>
+    </div>
+  </div>
+  <div ref="chart" style="width:90%;height:90%;margin-top:1em;position:relative;">
+    <span ref="tooltip" class="c-bubble" style="position:absolute;display:none">I say Hello !</span>
+  </div>
+  <script type="es6">
+    import * as d3Selection from 'd3-selection';
+    import * as d3Scale from 'd3-scale';
+    import * as d3Format from 'd3-format';
+    import * as d3Axis from 'd3-axis';
+    import * as d3Array from 'd3-array';
+
+    const tag = this;
+    tag.chart = {};
+    tag.selectedVars = {};
+    tag.chartCreated = false;
+    tag.dropdownVisible = false;
+    tag.select = select;
+    tag.init = init;
+    tag.setOutlierLabels = setOutlierLabels;
+    tag.resize = resize;
+    tag.openDropdown = openDropdown;
+    tag.closeDropdown = closeDropdown;
+    tag.toggleDropdown = toggleDropdown;
+    tag.toggleOutlierLabels = toggleOutlierLabels;
+
+    tag.mixin('parseState');
+    tag.mixin('getData');
+
+    tag.settings = {
+      selectedAttributes: {
+        selected: new Set(),
+        urlParamKey: 'sk',
+        get options() { return tag.valueAttributes; },
+        type: 'multiselect',
+      },
+      outlierLabelAttribute: {
+        selected: undefined,
+        get options() { return tag.labelAttributes; },
+        urlParamKey: 'lb',
+        type: 'select',
+      },
+      showOutlierLabels: {
+        value: true,
+        urlParamKey: 'ol',
+        type: 'boolean',
+      },
+    };
+
+    tag.on('selected::change', (options) => {
+      setSelected(options.selected);
+    });
+
+    function toggleOutlierLabels(evt) {
+      d3Selection.selectAll('text.outlier--label')
+        .style('display', (evt.target.checked) ? 'block' : 'none');
+    }
+
+    function toggleDropdown() {
+      tag.dropdownVisible = !tag.dropdownVisible;
+    }
+
+    function openDropdown() {
+      tag.dropdownVisible = true;
+    }
+
+    function resize() {
+      drawChart(tag.dataset, [...tag.settings.selectedAttributes.selected]);
+    }
+
+    function closeDropdown() {
+      tag.dropdownVisible = false;
+    }
+
+    function setOutlierLabels(evt) {
+      const { outlierLabelAttribute } = tag.settings;
+      const { urlParamKey, options } = outlierLabelAttribute;
+      outlierLabelAttribute.selected = options.find(attribute => attribute.key === evt.target.value);
+      d3Selection.select(tag.refs.chart).selectAll('.outlier--label')
+        .text(d => d[outlierLabelAttribute.selected.key]);
+      opts.controller.setState(opts.subview, urlParamKey, outlierLabelAttribute.selected.key);
+    }
+
+    function select(evt) {
+      const { selected, urlParamKey } = tag.settings.selectedAttributes;
+      const idx = selected.findIndex(elem => elem === evt.item);
+      if (idx > -1) {
+        selected.splice(idx, 1);
+      } else {
+        selected.push(evt.item);
+      }
+      const selectedKeys = selected.map(attribute => attribute.key).join(',');
+      if (selectedKeys.length > 0) {
+        opts.controller.setState(opts.subview, urlParamKey, selectedKeys);
+      } else {
+        opts.controller.removeState(opts.subview, urlParamKey);
+      }
+      drawChart(tag.dataset, selected);
+    }
+
+    function setSelected(selectedSet) {
+      const { selectedAttributes } = tag.settings;
+      selectedAttributes.selected = [...selectedSet];
+      const { urlParamKey, selected } = selectedAttributes;
+      if (selected.length > 0) {
+        const urlParamValue = selected
+          .map(attribute => attribute.key)
+          .join(',');
+        opts.controller.setState(opts.subview, urlParamKey, urlParamValue);
+      } else {
+        opts.controller.removeState(opts.subview, urlParamKey);
+      }
+      drawChart(tag.dataset, selected);
+    }
+
+    function init(dataset) {
+      tag.valueAttributes = tag.dataset.Attributes.values;
+      tag.labelAttributes = tag.dataset.Attributes.labels;
+      [tag.settings.outlierLabelAttribute.selected] = tag.settings.outlierLabelAttribute.options;
+      tag.parseState(tag.settings, undefined, 'urlParamKey');
+      const { selected } = tag.settings.selectedAttributes;
+      riot.mount(tag.refs['dropdown-select'].root, 'checkbox-dropdown-select', {
+        attributes: tag.valueAttributes,
+        selected,
+        state: opts.state,
+        parent: tag,
+      });
+      drawChart(dataset, [...selected]);
+    }
+    function drawChart(dataset, variables) {
+      const { features } = dataset.json;
+      const margin = {
+        top: 40,
+        right: 40,
+        bottom: 40,
+        left: 80,
+      };
+      const width = tag.refs.chart.clientWidth;
+      const height = tag.refs.chart.clientHeight;
+      let min = Infinity;
+      let max = -Infinity;
+      tag.data = variables.map((variable) => {
+        const { key, name } = variable;
+        const variableObject = {
+          key,
+          name,
+          features: [],
+        };
+        features.forEach((feature) => {
+          const featureObject = {};
+          const value = feature.properties[key];
+          if (value) {
+            if (value < min) min = value;
+            if (value > max) max = value;
+            featureObject.value = value;
+          }
+          featureObject.value = value;
+          tag.labelAttributes.forEach((label) => {
+            featureObject[label.key] = feature.properties[label.key];
+          });
+          variableObject.features.push(featureObject);
+        });
+        return variableObject;
+      });
+      tag.format = d3Format.format('-,.2f');
+
+      tag.xScale = tag.xScale || d3Scale.scaleBand();
+      tag.xScale
+        .domain(tag.data.map(attribute => attribute.name))
+        .rangeRound([0, width])
+        .padding(0.6);
+
+      tag.yScale = tag.yScale || d3Scale.scaleLinear();
+      tag.yScale
+        .domain([min * 0.8, max * 1.2])
+        .range([height, margin.top]);
+
+      tag.chart = tag.box()
+        .whiskers(iqr(1.5))
+        .width(tag.xScale.bandwidth())
+        .height(height - margin.top)
+        .domain([min * 0.8, max * 1.2])
+        .tickFormat(tag.format);
+
+      tag.svg = tag.svg || d3Selection.select(tag.refs.chart).append('svg');
+      tag.svg
+        .attr('class', 'box')
+        .attr('width', width + margin.left + margin.right)
+        .attr('height', height + margin.top + margin.bottom);
+
+      tag.g = tag.g || tag.svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+      tag.xAxis = tag.xAxis || tag.g.append('g');
+      tag.xAxis
+        .attr('transform', `translate(0,${height})`)
+        .classed('axis axis--x', true)
+        .call(d3Axis.axisBottom(tag.xScale));
+
+      tag.yAxis = tag.yAxis || tag.g.append('g');
+      tag.yAxis
+        .attr('transform', 'translate(0,0)')
+        .classed('axis axis--y', true)
+        .call(d3Axis.axisLeft(tag.yScale).tickPadding(5));
+
+      const boxes = tag.g.selectAll('g.box')
+        .data(tag.data, d => d.key);
+
+      boxes.enter().append('g')
+        .merge(boxes)
+        .attr('class', 'box')
+        .attr('transform', d => `translate(${tag.xScale(d.name)},40)`)
+        .call(tag.chart);
+
+      boxes.exit().remove();
+
+      tag.chartCreated = true;
+    }
+
+    function toggleTooltip(d) {
+      const [x, y] = d3Selection.mouse(tag.refs.chart);
+      if (d3Selection.event.type === 'mouseenter') {
+        d3Selection.select(tag.refs.tooltip)
+          .style('display', 'block')
+          .style('top', `${y}px`)
+          .style('left', `${x + 50}px`);
+        tag.refs.tooltip.innerHTML = `${d[tag.dataset.Attributes.labels[0].key]}: ${tag.format(d.value)}`;
+      } else if (d3Selection.event.type === 'mouseleave') {
+        tag.refs.tooltip.style.display = 'none';
+      }
+    }
+
+    function iqr(k) {
+      return function (d) {
+        const q1 = d.quartiles[0];
+        const q3 = d.quartiles[1];
+        const iqRange = (q3 - q1) * k;
+        let lower = 0;
+        let upper = d.length - 1;
+        for (let i = 0; d[i].value < q1 - iqRange; i += 1) {
+          lower = i + 1;
+        }
+        for (let i = d.length - 1; d[i].value > q3 + iqRange; i -= 1) {
+          upper = i - 1;
+        }
+        return [lower, upper];
+      };
+    }
+
+    // Inspired by http://informationandvisualization.de/blog/box-plot
+    // Copyright (c) 2010 Fabian Dill
+    // Customized by Mike Bostock
+    // Customized by Sebastian Altenhuber & Patrick Humme
+    (function () {
+      tag.box = function () {
+        let width = 1;
+        let height = 1;
+        let duration = 0;
+        let domain = null;
+        let value = Number;
+        let whiskers = boxWhiskers;
+        let quartiles = boxQuartiles;
+        let tickFormat = null;
+
+        // For each small multiple…
+        function box(g) {
+          g.each(function (d, i) {
+            /* eslint-disable no-param-reassign */
+            d = d.features.sort((a, b) => d3Array.ascending(a.value, b.value));
+            const h = d3Selection.select(this);
+            const n = d.length;
+            const min = d[0];
+            const max = d[n - 1];
+
+            // Compute quartiles. Must return exactly 3 elements.
+            d.quartiles = quartiles(d.map(feature => feature.value));
+            /* eslint-enable no-param-reassign */
+            const quartileData = d.quartiles;
+
+            // Compute whiskers. Must return exactly 2 elements, or null.
+            const whiskerIndices = whiskers && whiskers.call(this, d, i);
+            const whiskerData = whiskerIndices && whiskerIndices.map(idx => d[idx].value);
+
+            // Compute outliers. If no whiskers are specified, all data are 'outliers'.
+            // We compute the outliers as indices, so that we can join across transitions!
+            const outlierIndices = whiskerIndices
+              ? d3Array.range(0, whiskerIndices[0]).concat(d3Array.range(whiskerIndices[1] + 1, n))
+              : d3Array.range(n);
+
+            const outlierData = outlierIndices && outlierIndices.map(idx => d[idx]);
+
+            // Compute the new x-scale.
+            const x1 = d3Scale.scaleLinear()
+              .domain((domain && domain.call(this, d, i)) || [min, max])
+              .range([height, 0]);
+
+            // Retrieve the old x-scale, if this is an update.
+            const x0 = this.oldScale || d3Scale.scaleLinear()
+              .domain([0, Infinity])
+              .range(x1.range());
+
+            // Stash the new scale.
+            // this.__chart__ = x1;
+            this.oldScale = x1;
+
+            // Note: the box, median, and box tick elements are fixed in number,
+            // so we only have to handle enter and update. In contrast, the outliers
+            // and other elements are variable, so we need to exit them! Variable
+            // elements also fade in and out.
+
+            // Update center line: the vertical line spanning the whiskers.
+            const center = h.selectAll('line.center')
+              .data(whiskerData ? [whiskerData] : [])
+              .attr('x1', width / 2)
+              .attr('x2', width / 2);
+
+            center.enter().insert('line', 'rect')
+              .attr('class', 'center')
+              .attr('x1', width / 2)
+              .attr('y1', e => x0(e[0]))
+              .attr('x2', width / 2)
+              .attr('y2', e => x0(e[1]))
+              .style('opacity', 1e-6)
+              .transition()
+              .duration(duration)
+              .style('opacity', 1)
+              .attr('y1', e => x1(e[0]))
+              .attr('y2', e => x1(e[1]));
+
+            center.transition()
+              .duration(duration)
+              .style('opacity', 1)
+              .attr('y1', e => x1(e[0]))
+              .attr('y2', e => x1(e[1]));
+
+            center.exit().transition()
+              .duration(duration)
+              .style('opacity', 1e-6)
+              .attr('y1', e => x1(e[0]))
+              .attr('y2', e => x1(e[1]))
+              .remove();
+
+            // Update innerquartile box.
+            const boxRect = h.selectAll('rect.box')
+              .data([quartileData])
+              .attr('width', width);
+
+            boxRect.enter().append('rect')
+              .attr('class', 'box')
+              .attr('x', 0)
+              .attr('y', idx => x0(idx[2]))
+              .attr('width', width)
+              .attr('height', idx => (x0(idx[0]) - x0(idx[2])))
+              .transition()
+              .duration(duration)
+              .attr('y', idx => x1(idx[2]))
+              .attr('height', idx => (x1(idx[0]) - x1(idx[2])));
+
+            boxRect.transition()
+              .duration(duration)
+              .attr('y', idx => x1(idx[2]))
+              .attr('height', idx => (x1(idx[0]) - x1(idx[2])));
+
+            // Update median line.
+            const medianLine = h.selectAll('line.median')
+              .data([quartileData[1]])
+              .attr('x2', width);
+
+            medianLine.enter().append('line')
+              .attr('class', 'median')
+              .attr('x1', 0)
+              .attr('y1', x0)
+              .attr('x2', width)
+              .attr('y2', x0)
+              .transition()
+              .duration(duration)
+              .attr('y1', x1)
+              .attr('y2', x1);
+
+            medianLine.transition()
+              .duration(duration)
+              .attr('y1', x1)
+              .attr('y2', x1);
+
+            // Update whiskers.
+            const whisker = h.selectAll('line.whisker')
+              .data(whiskerData || [])
+              .attr('x2', width);
+
+            whisker.enter().insert('line', 'circle, text')
+              .attr('class', 'whisker')
+              .attr('x1', 0)
+              .attr('y1', x0)
+              .attr('x2', width)
+              .attr('y2', x0)
+              .style('opacity', 1e-6)
+              .transition()
+              .duration(duration)
+              .attr('y1', x1)
+              .attr('y2', x1)
+              .style('opacity', 1);
+
+            whisker.transition()
+              .duration(duration)
+              .attr('y1', x1)
+              .attr('y2', x1)
+              .style('opacity', 1);
+
+            whisker.exit().transition()
+              .duration(duration)
+              .attr('y1', x1)
+              .attr('y2', x1)
+              .style('opacity', 1e-6)
+              .remove();
+
+            // Update outliers.
+            const outliers = h.selectAll('g.outlier')
+              .data(outlierData, Number)
+              .attr('cx', width / 2);
+
+            const outlierGroups = outliers.enter().insert('g')
+              .attr('class', 'outlier');
+
+            outlierGroups
+              .append('circle')
+              .attr('r', 5)
+              // .attr('cx', width / 2)
+              .attr('cy', idx => x0(idx.value))
+              .style('opacity', 1e-6)
+              .on('mouseenter', toggleTooltip)
+              .on('mouseleave', toggleTooltip)
+              .transition()
+              .duration(duration)
+              .attr('cx', width / 2)
+              .attr('cy', idx => x1(idx.value))
+              .style('opacity', 1);
+
+            outliers.selectAll('circle')
+              .transition()
+              .duration(duration)
+              .attr('cx', width / 2)
+              .attr('cy', idx => x1(idx.value))
+              .style('opacity', 1);
+
+            outlierGroups.append('text')
+              .text(idx => idx[tag.settings.outlierLabelAttribute.selected.key])
+              .attr('x', width / 2)
+              .attr('y', idx => x0(idx.value))
+              .attr('dx', (e, idx) => {
+                const dx = (idx % 2 === 1)
+                  ? '1em'
+                  : '-1em';
+                return dx;
+              })
+              .attr('text-anchor', (e, idx) => {
+                const anchor = (idx % 2 === 1)
+                  ? 'start'
+                  : 'end';
+                return anchor;
+              })
+              .attr('class', 'outlier--label')
+              .transition()
+              .duration(duration)
+              .attr('y', idx => x1(idx.value))
+              .style('opacity', 1);
+
+            outliers.selectAll('text.outlier--label')
+              .transition()
+              .duration(duration)
+              .attr('x', width / 2)
+              .attr('y', idx => x1(idx.value))
+              .style('opacity', 1);
+
+            outliers.exit().transition()
+              .duration(duration)
+            // .attr('cy', function(i) { return x1(i.data); })
+            // .style('opacity', 1e-6)
+              .remove();
+
+            // Compute the tick format.
+            const format = tickFormat || x1.tickFormat(8);
+
+            // Update box ticks.
+            const boxTick = h.selectAll('text.box')
+              .data(quartileData)
+              .attr('dy', '.3em')
+              .attr('dx', (e, idx) => {
+                const dx = (idx % 2 === 1)
+                  ? 6
+                  : -6;
+                return dx;
+              })
+              .attr('x', (e, idx) => {
+                const x = (idx % 2 === 1)
+                  ? width
+                  : 0;
+                return x;
+              })
+              .attr('y', x0);
+
+            boxTick.enter().append('text')
+              .attr('class', 'box')
+              .attr('dy', '.3em')
+              .attr('dx', (e, idx) => {
+                const dx = (idx % 2 === 1)
+                  ? 6
+                  : -6;
+                return dx;
+              })
+              .attr('x', (e, idx) => {
+                const x = (idx % 2 === 1)
+                  ? width
+                  : 0;
+                return x;
+              })
+              .attr('y', x0)
+              .attr('text-anchor', (e, idx) => {
+                const anchor = (idx % 2 === 1)
+                  ? 'start'
+                  : 'end';
+                return anchor;
+              })
+              .text(format)
+              .transition()
+              .duration(duration)
+              .attr('y', x1);
+
+            boxTick.transition()
+              .duration(duration)
+              .text(format)
+              .attr('y', x1);
+            // Update whisker ticks. These are handled separately from the box
+            // ticks because they may or may not exist, and we want don't want
+            // to join box ticks pre-transition with whisker ticks post-.
+            const whiskerTick = h.selectAll('text.whisker')
+              .data(whiskerData || [])
+              .attr('dy', '.3em')
+              .attr('dx', 6)
+              .attr('x', width)
+              .attr('y', x0);
+
+            whiskerTick.enter().append('text')
+              .attr('class', 'whisker')
+              .attr('dy', '.3em')
+              .attr('dx', 6)
+              .attr('x', width)
+              .attr('y', x0)
+              .text(idx => format(idx))
+              .style('opacity', 1e-6)
+              .transition()
+              .duration(duration)
+              .attr('y', x1)
+              .style('opacity', 1);
+
+            whiskerTick.transition()
+              .duration(duration)
+              .text(idx => format(idx))
+              .attr('y', x1)
+              .style('opacity', 1);
+
+            whiskerTick.exit().transition()
+              .duration(duration)
+              .attr('y', x1)
+              .style('opacity', 1e-6)
+              .remove();
+          });
+        }
+
+        box.width = function (x) {
+          if (!arguments.length) return width;
+          width = x;
+          return box;
+        };
+
+        box.height = function (x) {
+          if (!arguments.length) return height;
+          height = x;
+          return box;
+        };
+
+        box.tickFormat = function (x) {
+          if (!arguments.length) return tickFormat;
+          tickFormat = x;
+          return box;
+        };
+
+        box.duration = function (x) {
+          if (!arguments.length) return duration;
+          duration = x;
+          return box;
+        };
+
+        const functor = function (x) {
+          return function () {
+            return x;
+          };
+        };
+
+        box.domain = function (x) {
+          if (!arguments.length) return domain;
+          domain = x == null ? x : functor(x);
+          return box;
+        };
+
+
+        box.value = function (x) {
+          if (!arguments.length) return value;
+          value = x;
+          return box;
+        };
+
+        box.whiskers = function (x) {
+          if (!arguments.length) return whiskers;
+          whiskers = x;
+          return box;
+        };
+
+        box.quartiles = function (x) {
+          if (!arguments.length) return quartiles;
+          quartiles = x;
+          return box;
+        };
+
+        return box;
+      };
+
+      function boxWhiskers(d) {
+        return [0, d.length - 1];
+      }
+
+      function boxQuartiles(d) {
+        return [
+          d3Array.quantile(d, 0.25),
+          d3Array.quantile(d, 0.5),
+          d3Array.quantile(d, 0.75),
+        ];
+      }
+    }());
+  </script>
+</chart-boxplot>

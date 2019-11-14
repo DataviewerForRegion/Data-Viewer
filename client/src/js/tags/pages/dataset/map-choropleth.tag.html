@@ -1,0 +1,1078 @@
+/**
+ * Copyright (c) 2018 Sebastian Altenhuber, Patrick Humme
+ * 
+ * @file Choropleth map
+ * @author Sebastian Altenhuber <sebastian.altenhuber@gmail.com>
+ * @author Patrick Humme <pathumme@gmail.com>
+ */
+<map-choropleth>
+    <div class="o-grid o-grid--wrap">
+      <div class="o-grid__cell o-grid__cell--width-50@large o-grid__cell--width-100">
+        <label>
+          Select the variable to visualize
+          <select onchange={ settingsEventHandler(map.settings.variable) } 
+            class="c-field" name="variableselect" disabled ref="selectattribute">
+            <option each={ attribute in valueAttributes } 
+              value={ attribute.key } 
+              selected={ map.settings.variable.selected && attribute.key === map.settings.variable.selected.key }>
+              { attribute.name }
+            </option>
+          </select>
+        </label>
+      </div>
+      <div class="o-grid__cell o-grid__cell--width-50@large o-grid__cell--width-100">
+        <range-slider-text label="Number of Categories" min="3" max="12" step="1" 
+          start={ map.settings.numClasses.value } 
+          on-slide={ settingsEventHandler(map.settings.numClasses) } />
+      </div>
+      <div class="o-grid__cell o-grid__cell--width-50@large o-grid__cell--width-100">
+        <select onchange={ settingsEventHandler(map.settings.scale) } 
+          class="c-field" id="select_scale">
+          <option each={ scale in map.settings.scale.options } 
+            value={ scale.key } 
+            selected={ scale.scale === map.settings.scale.selected }>
+            { scale.label }
+          </option>
+        </select>
+      </div>
+       <div class="o-grid__cell o-grid__cell--width-50@large o-grid__cell--width-100 o-panel-container" style="height: 2em;">
+         <colorpicker set-color-scheme={ setColorScheme } 
+          inverted={ map.styleSettings.features.base.fill.inverted }
+          schemeType="sequential" 
+          selectedscheme={ map.styleSettings.multiHueColorScheme.key } 
+          state={ opts.state } 
+          subview={ opts.subview } 
+          controller = { opts.controller }
+        />
+      </div>
+    </div>
+    <div id="map" ref="map" style="margin-top:30px;">
+      <div id="legend" class="u-high">
+      </div>
+    </div>
+  <script type="es6">
+    import * as d3Array from 'd3-array';
+    import * as d3Color from 'd3-color';
+    import * as d3Collection from 'd3-collection';
+    import * as d3Selection from 'd3-selection';
+    import * as d3Format from 'd3-format';
+    import * as d3Scale from 'd3-scale';
+    import * as L from 'leaflet';
+    import LeafletD3SvgOverlay from '../../../libs/LeafletD3SvgOverlay';
+
+    const tag = this;
+    tag.map = {};
+    const { map } = tag;
+    map.basemaps = require('../../../utils/basemaps');
+
+
+    tag.on('color::invert', () => {
+      invertColors();
+    });
+
+    tag.init = init;
+    tag.drawMap = drawMap;
+    tag.setOpacity = setOpacity;
+    tag.setScale = setScale;
+    tag.setVariable = setVariable;
+    tag.toggleLabels = toggleLabels;
+    tag.setColorScheme = setColorScheme;
+    tag.settingsEventHandler = settingsEventHandler;
+    tag.updateChart = updateChart;
+    tag.receivesUpdate = true;
+
+    tag.mixin('getData');
+    tag.mixin('mapSettings');
+    tag.mixin('parseState');
+
+    ['getData', 'mapSettings', 'parseState'].forEach(mixin => tag.mixin(mixin));
+
+    // Define default settings object
+    map.settings = {
+      variable: {
+        selected: undefined,
+        get options() { return tag.valueAttributes; },
+        urlParamKey: 'v',
+        type: 'select',
+        changeFn: setVariable,
+      },
+      label: {
+        selected: undefined,
+        get options() { return tag.labelAttributes; },
+        urlParamKey: 'l',
+        type: 'select',
+        changeFn: setLabel,
+      },
+      tooltipLabel: {
+        selected: undefined,
+        get options() { return tag.labelAttributes; },
+        urlParamKey: 'ltt',
+        type: 'select',
+      },
+      scale: {
+        selected: d3Scale.scaleQuantize,
+        options: [
+          {
+            key: 'qtize',
+            scale: d3Scale.scaleQuantize,
+            label: 'Quantize Scale',
+          },
+          {
+            key: 'qtile',
+            scale: d3Scale.scaleQuantile,
+            label: 'Quantile Scale',
+          },
+        ],
+        urlParamKey: 'scl',
+        type: 'scale',
+        changeFn: setScale,
+      },
+      lat: {
+        value: undefined,
+        urlParamKey: 'lat',
+      },
+      lon: {
+        value: undefined,
+        urlParamKey: 'lon',
+      },
+      zoom: {
+        value: undefined,
+        urlParamKey: 'z',
+      },
+      numClasses: {
+        value: 6,
+        urlParamKey: 'cn',
+        changeFn: setNumClasses,
+      },
+    };
+
+    // Define default map style settings object
+    map.styleSettings = {
+      multiHueColorScheme: {
+        key: undefined,
+        interpolateFn: undefined,
+        urlParamKey: 'mcis',
+        type: 'sequentialColorscheme',
+      },
+      features: {
+        base: {
+          fill: {
+            value: '#000000',
+            urlParamKey: 'sbc',
+            label: 'Base Color',
+            type: 'color',
+            multiHue: {
+              available: false,
+              value: true,
+              type: 'boolean',
+              urlParamKey: 'bmh',
+            },
+            inverted: {
+              value: false,
+              type: 'boolean',
+              urlParamKey: 'inv',
+            },
+          },
+          fillOpacity: {
+            value: 0.6,
+            urlParamKey: 'boc',
+            label: 'Base Opacity',
+            type: 'opacity',
+          },
+          stroke: {
+            value: '#ffffff',
+            type: 'color',
+            urlParamKey: 'stbc',
+            label: 'Base Stroke Color',
+            multiHue: {
+              available: false,
+              type: 'boolean',
+              value: false,
+              urlParamKey: 'stbmh',
+            },
+          },
+          strokeWidth: {
+            value: 2,
+            urlParamKey: 'stbw',
+            label: 'Stroke Width',
+          },
+          strokeOpacity: {
+            value: 1,
+            urlParamKey: 'stoc',
+            label: 'Stroke Opacity',
+            type: 'opacity',
+          },
+        },
+        selected: {
+          fill: {
+            value: '#000000',
+            type: 'color',
+            urlParamKey: 'scs',
+            label: 'Selected Color',
+            multiHue: {
+              urlParamKey: 'smh',
+              value: true,
+              available: false,
+              type: 'boolean',
+            },
+          },
+          fillOpacity: {
+            value: 0.8,
+            urlParamKey: 'soc',
+            label: 'Selected Opacity',
+            type: 'opacity',
+          },
+          stroke: {
+            value: '#ffffff',
+            urlParamKey: 'stsc',
+            type: 'color',
+            label: 'Selected Stroke Color',
+            multiHue: {
+              available: false,
+              value: false,
+              urlParamKey: 'stsmh',
+              type: 'boolean',
+            },
+          },
+          strokeWidth: {
+            value: 2,
+            urlParamKey: 'stsw',
+            label: 'Selected Stroke Width',
+          },
+          strokeOpacity: {
+            value: 1,
+            urlParamKey: 'stoc',
+            label: 'Selected Stroke Opacity',
+            type: 'opacity',
+          },
+        },
+      },
+      labels: {
+        fill: {
+          value: '#ffffff',
+          type: 'color',
+          urlParamKey: 'lc',
+          label: 'Color',
+        },
+        fillOpacity: {
+          value: 1,
+          urlParamKey: 'loc',
+          label: 'Opacity',
+          type: 'opacity',
+        },
+        stroke: {
+          value: '#000000',
+          type: 'color',
+          urlParamKey: 'lsc',
+          label: 'Stroke Color',
+        },
+        strokeWidth: {
+          value: 1,
+          urlParamKey: 'lbw',
+          label: 'Stroke Width',
+        },
+        strokeDisplay: {
+          value: false,
+          label: 'Display Stroke',
+          urlParamKey: 'lstd',
+          type: 'boolean',
+        },
+        size: {
+          value: 12,
+          label: 'Label Size',
+          urlParamKey: 'lsz',
+        },
+        display: {
+          value: true,
+          type: 'boolean',
+          urlParamKey: 'ld',
+          label: 'Display Labels',
+        },
+      },
+    };
+
+    function invertColors() {
+      const { inverted } = map.styleSettings.features.base.fill;
+      inverted.value = !inverted.value;
+      opts.controller.setState(opts.subview, inverted.urlParamKey, (inverted.value) ? 1 : 0);
+      map.colors = range(map.settings.numClasses.value, inverted.value)
+        .map(val => map.colorScheme(val));
+      if (map.settings.variable.selected) {
+        drawMap(tag.dataset.json, tag.dataset.selection, map.variable, map.colors);
+      }
+    }
+
+    function settingsEventHandler(settingsObject) {
+      return function (evt) {
+        let urlParamValue;
+        const settings = settingsObject;
+        if (settings.type === 'select' || settings.type === 'scale') {
+          settings.options.forEach((option) => {
+            if (option.key === evt.target.value) {
+              if (settings.type === 'scale') {
+                settings.selected = option.scale;
+              } else {
+                settings.selected = option;
+              }
+              urlParamValue = option.key;
+            }
+          });
+          if (settings.changeFn) settings.changeFn(settings.selected);
+        } else {
+          settings.value = evt.target.value;
+          urlParamValue = settings.value;
+          settings.changeFn(settings.value);
+        }
+        opts.controller.setState(opts.subview, settings.urlParamKey, urlParamValue);
+      };
+    }
+
+    function updateChart() {
+      drawMap(tag.dataset.json, tag.dataset.selection, map.settings.variable.selected, map.colors);
+    }
+    /**
+     * Event handler for chart style settings. Returns event handler for given settings object.
+     * Change corresponding settingsObject and call change function
+     * @param {Object} settingsObject - Object containing settings and change function
+     * @returns {Function}
+     */
+    function styleEventHandler(settingsObject) {
+      const defaultValue = settingsObject.value;
+      return function (evt) {
+        const settings = settingsObject;
+        let val;
+        const { type } = settings;
+        if (type === 'boolean') {
+          val = evt.target.checked;
+        } else if (type === 'opacity') {
+          val = evt.target.value / 100;
+        } else if (type === 'color') {
+          val = evt.target.value;
+        } else {
+          val = +evt.target.value;
+        }
+        settings.value = val;
+        if (settings.changeFn) settings.changeFn(val);
+        if (val === defaultValue) {
+          opts.controller.removeState(opts.subview, settings.urlParamKey);
+        } else {
+          if (type === 'boolean') {
+            val = (val) ? 1 : 0;
+          } else if (type === 'color') {
+            val = val.slice(1);
+          }
+          opts.controller.setState(opts.subview, settings.urlParamKey, val);
+        }
+        applyFeatureStyles();
+      };
+    }
+    /**
+     * Change feature labels to another label attribute.
+     *
+     */
+    function setLabel(label) {
+      map.labels.text(d => d.properties[label.key]);
+    }
+
+    function setSize(evt) {
+      const {
+        target: { value },
+        item,
+      } = evt.target;
+      item.value = value;
+      opts.controller.setState(opts.subview, evt.item.urlParamKey, value);
+      applyFeatureStyles();
+    }
+
+    function setSingleHueColor(evt) {
+      const {
+        target: { value },
+        item,
+      } = evt.target;
+      item.value = value;
+      // Set state in controller for URL update, slice # from hexCode for URL parameter
+      opts.controller.setState(opts.subview, evt.item.urlParamKey, value.slice(1));
+      applyFeatureStyles();
+    }
+    /**
+     * Initialize tag with dataset and selection.
+     * @param {Object} dataset - Dataset GeoJSON object
+     * @param {Set} selection - Selected features
+     */
+    function init(dataset) {
+      tag.labelAttributes = tag.dataset.Attributes.labels;
+      tag.valueAttributes = tag.dataset.Attributes.values;
+      map.label = tag.labelAttributes[0].key;
+      map.tooltipLabel = map.label;
+      tag.refs.selectattribute.disabled = false;
+      tag.parseState(map.settings, map.styleSettings, 'urlParamKey');
+      if (!map.styleSettings.multiHueColorScheme.key) {
+        map.styleSettings.multiHueColorScheme.key = 'interpolatePurples';
+      }
+      const {
+        features: { base },
+        features: { selected },
+        labels,
+      } = map.styleSettings;
+      // Structure map style settings and assign functions to execute on change for map settings panel
+      map.settingInputs = {
+        styleEventHandler,
+        settingsEventHandler,
+        features: {
+          color: {
+            setSingleHueColor: styleEventHandler,
+            toggleSingleMultiHue: styleEventHandler,
+            multiHueColorScheme: map.styleSettings.multiHueColorScheme,
+            colorSchemeType: 'sequential',
+            controls: [
+              base.fill,
+              selected.fill,
+              base.stroke,
+              selected.stroke,
+            ],
+          },
+          size: {
+            onSlide: setSize,
+            controls: [
+              base.strokeWidth,
+              selected.strokeWidth,
+            ],
+          },
+          opacity: {
+            onSlide: setOpacity,
+            controls: [
+              base.fillOpacity,
+              selected.fillOpacity,
+              base.strokeOpacity,
+              selected.strokeOpacity,
+            ],
+          },
+        },
+        labels: {
+          color: {
+            setSingleHueColor,
+            controls: [labels.fill, labels.stroke],
+          },
+          // select: [{options: map.labelVariables, change: map.changeLabels}],
+          select: [map.settings.label],
+          toggle: {
+            change: toggleLabels,
+            controls: [labels.display, labels.strokeDisplay],
+          },
+          size: {
+            change: setSize,
+            controls: [labels.size],
+          },
+          opacity: {
+            change: setOpacity,
+            controls: [labels.fillOpacity],
+          },
+        },
+        tooltips: {
+          select: {
+            controls: [map.settings.tooltipLabel],
+          },
+        },
+      };
+      if (tag.dataset && map.settings.variable.selected && map.colors) {
+        drawMap(dataset.json, tag.dataset.selection, map.settings.variable.selected, map.colors);
+      }
+    }
+    /**
+     * Toggle labels on/off depending on whether the checkbox is checked
+     * @param {Event} evt - Onchange event of the checkbox
+     */
+    function toggleLabels(evt) {
+      const { checked } = evt.target;
+      const { item } = evt;
+      item.value = checked;
+      opts.controller.setState(opts.subview, item.urlParamKey, (checked) ? 1 : 0);
+      applyFeatureStyles();
+    }
+    /**
+     * Apply style settings from style settings object to all map features
+     * Called upon every change of feature settings
+     *
+     */
+    function applyFeatureStyles() {
+      const base = {
+        settings: map.styleSettings.features.base,
+        name: 'base',
+      };
+      const selected = {
+        settings: map.styleSettings.features.selected,
+        name: 'selected',
+      };
+      const { labels } = map.styleSettings;
+      const { key } = map.settings.variable.selected;
+      map.features
+        .style('fill', (d) => {
+          const color = base.settings.fill.multiHue.value
+            ? map.scale(d.properties[key])
+            : base.settings.fill.value;
+          return d3Color.rgb(color);
+        });
+      [base, selected].forEach((group) => {
+        const {
+          settings,
+          name,
+        } = group;
+        map.featureGroupContainers[name].selectAll('path')
+          .style('fill-opacity', settings.fillOpacity.value)
+          .style('stroke', (d) => {
+            const color = settings.stroke.multiHue.value
+              ? map.scale(d.properties[key])
+              : settings.stroke.value;
+            return d3Color.rgb(color);
+          })
+          .style('stroke-width', `${settings.strokeWidth.value / map.featureSvgOverlay.scale}px`)
+          .style('stroke-opacity', settings.strokeOpacity.value);
+      });
+      map.featureGroupContainers.selected.selectAll('path')
+        .style('fill', (d) => {
+          const color = selected.settings.fill.multiHue.value
+            ? map.scale(d.properties[key])
+            : selected.settings.fill.value;
+          return d3Color.rgb(color);
+        });
+      map.labels
+        .style('display', () => {
+          const display = labels.display.value
+            ? 'block'
+            : 'none';
+          return display;
+        })
+        .style('font-size', `${map.styleSettings.labels.size.value / map.featureSvgOverlay.scale < 1 ? 1 : map.featureSvgOverlay}px`)
+        .style('fill-opacity', labels.fillOpacity.value)
+        .style('fill', d3Color.rgb(labels.fill.value))
+        .style('stroke', d3Color.rgb(labels.stroke.value))
+        .style('stroke-width', () => {
+          const width = labels.strokeDisplay.value
+            ? labels.strokeWidth.value
+            : 0;
+          return `${width}px`;
+        });
+    }
+
+    /**
+     * Change Opacity of labels or features, change URL parameters and apply new style setting.
+     * @param {Event} evt - Opacity change event.
+     */
+    function setOpacity(evt) {
+      const { item } = evt;
+      // Opacity is in per cent.
+      const opacity = evt.target.value / 100;
+      item.value = opacity;
+      // Set opacity as state in controller
+      opts.controller.setState(opts.subview, item.urlParamKey, opacity);
+      // Apply feature styles
+      applyFeatureStyles();
+    }
+    /**
+     * Set number of categories for map
+     * @param {Number} number - Number of categories
+     *
+     */
+    function setNumClasses(number) {
+      map.colors = range(number, map.styleSettings.features.base.fill.inverted.value)
+        .map(value => map.colorScheme(value));
+      drawMap(tag.dataset.json, tag.dataset.selection, map.variable, map.colors);
+    }
+    /**
+     * Returns an array of uniformly spaced values between 0 and 1, inclusively
+     * @param {Number} numCategories - Number of values to split up the space
+     * @returns {Array} Array of colors
+     */
+    function range(number, inverted) {
+      const numArray = [];
+      for (let j = 0, i = number - 1; j < number; j += 1) {
+        numArray.push(0 + (j / i));
+      }
+      console.log(inverted);
+      return inverted ? numArray.reverse() : numArray;
+    }
+    /**
+     * Select variable to visualize on the map
+     * @param {Event} event - Input select HTML element
+     *
+     */
+    function setVariable() {
+      if (map.colors) {
+        drawMap(tag.dataset.json, tag.dataset.selection, map.settings.variable.selected, map.colors);
+      }
+    }
+    /**
+     * Set the type of the scale for calculating color intervals.
+     * @param {HTMLElement} e - Input select HTML element
+     *
+     */
+    function setScale() {
+      drawMap(tag.dataset.json, tag.dataset.selection, map.variable, map.colors);
+    }
+    /**
+     * On selecting a new color scheme, update map and display new color scheme in color picker.
+     * @param {Object} colorSchemeObject - Object containing key and interpolation
+     *      function of the color scheme
+     */
+    function setColorScheme(colorSchemeObject) {
+      const settings = map.styleSettings.multiHueColorScheme;
+      map.colorScheme = colorSchemeObject.interpolateFn;
+      const inverted = map.styleSettings.features.base.fill.inverted.value;
+      map.colors = range(map.settings.numClasses.value, inverted)
+        .map(val => map.colorScheme(val));
+      if (map.settings.variable.selected) {
+        drawMap(tag.dataset.json, tag.dataset.selection, map.variable, map.colors);
+      }
+      settings.key = colorSchemeObject.key;
+      settings.interpolateFn = colorSchemeObject.interpolateFn;
+      opts.controller.setState(opts.subview, 'mcis', colorSchemeObject.key);
+    }
+    /*
+     * Draw the map.
+     * @param {Object} dataset - Dataset to visualize
+     * @param {String} key - Key of the data variable to visualize with color
+     * @param {<Array>String} colors - Array of colors used as range
+     */
+    function drawMap(
+      data = tag.dataset.json,
+      selection = tag.dataset.selection,
+      variable = map.settings.variable.selected,
+      colors,
+    ) {
+      // Initialize map container, if not already initialized
+      if (!map.mapContainer) {
+        map.format = d3Format.format(',.2s');
+        const baseMaps = {};
+        // Add basemaps
+        map.basemaps.forEach((basemap) => {
+          const bm = basemap;
+          bm.layer = L.tileLayer(
+            bm.url,
+            { minZoom: 2, maxZoom: 18, attribution: bm.attribution },
+          );
+          baseMaps[bm.name] = bm.layer;
+        });
+        // Create new leaflet map container and add default base layer.
+        map.mapContainer = L.map(tag.refs.map, {
+          center: [0, 0],
+          zoom: 3,
+          layers: map.basemaps[0].layer,
+
+        });
+        // Add empty hidden tooltip to map's tooltipPanel.
+        map.tooltip = d3Selection.select(map.mapContainer.getPane('tooltipPane'))
+          .append('span')
+          .classed('tooltip c-bubble', true)
+          .style('display', 'none');
+
+        // Add leaflet layer control.
+        L.control.layers(baseMaps).addTo(map.mapContainer);
+        L.control.scale().addTo(map.mapContainer);
+
+        // Add custom control panel for feature style settings to map.
+        const MapControlPanel = tag.addMapControlPanel(tag, map.settingInputs);
+        const mapSettings = new MapControlPanel();
+        mapSettings.addTo(map.mapContainer);
+      }
+
+      map.scale = map.settings.scale.selected();
+      if (map.settings.scale.selected === d3Scale.scaleQuantize) {
+        map.scale.domain(d3Array.extent(data.features, d => d.properties[variable.key]));
+      } else {
+        map.scale.domain(data.features.map(feature => feature.properties[variable.key]));
+      }
+      map.scale.range(colors);
+
+      map.featureSvgOverlay = map.featureSvgOverlay || new LeafletD3SvgOverlay();
+
+      map.featureSvgOverlay.afterZoomChange = applyFeatureStyles;
+      // Define callback for each draw call
+      map.featureSvgOverlay.drawCallback = function draw(sel, projection) {
+        map.featureGroupContainers = map.featureGroupContainers || {};
+        if (!map.featureGroupContainers.base) {
+          map.featureGroupContainers.base = sel.append('g')
+            .classed('map__features map__features--base', true);
+        }
+        if (!map.featureGroupContainers.selected) {
+          map.featureGroupContainers.selected = sel.append('g')
+            .classed('map__features map__features--selected', true);
+        }
+        // Separate features to groups depending on whether they are selected.
+        const entries = d3Collection.nest()
+          .key(d => selection.has(d))
+          .sortKeys(d3Array.ascending)
+          .entries(data.features);
+        // Data join for feature groups.
+        map.featureGroups = sel.selectAll('g.map__features')
+          .data(entries);
+        // Lower the base feature group, so that is always displayed behind the selected feature group.
+        map.featureGroupContainers.base.lower();
+
+        // Data join for features.
+        map.features = map.featureGroups.selectAll('path')
+          .data(d => d.values, d => d.id);
+        // Remove non-existent features.
+        map.features.exit().remove();
+
+        // Enter features as svg paths on the map.
+        map.features = map.features
+          .enter()
+          .append('path')
+          .classed('leaflet-interactive', true)
+          .merge(map.features)
+          .attr('d', projection.pathFromGeojson);
+
+        // Add labels group and raise it to the top of the SVG.
+        if (!map.labelsGroup) {
+          map.labelsGroup = sel.append('g')
+            .classed('map__labels', true);
+        }
+        // Raise labels to the top
+        map.labelsGroup.raise();
+
+        // Labels data join
+        map.labels = map.labelsGroup.selectAll('text')
+          .data(data.features);
+        // Remove redundant labels
+        map.labels.exit().remove();
+
+        // Add joined labels, merge with old labels and update
+        map.labels = map.labels
+          .enter()
+          .append('text')
+          .merge(map.labels)
+          .style('font-size', `${d3Array.min([12 / projection.scale, 6])}px`)
+          .attr('transform', d => `translate(${projection.pathFromGeojson.centroid(d)})`)
+          .attr('text-anchor', 'middle');
+
+        map.pathBounds = projection.pathFromGeojson
+          .bounds(data)
+          .map(point => projection.layerPointToLatLng(point));
+      };
+
+      // Initialize SVG map overlay containing features
+      if (!map.overlayInitialized) {
+        map.featureSvgOverlay.addTo(map.mapContainer);
+        map.overlayInitialized = true;
+      }
+
+      // Attach event handlers for non-selected features
+      map.featureGroupContainers.base.selectAll('path')
+        .on('mouseover', featureMouseOverEventHandler)
+        .on('mouseout', featureMouseOutEventHandler);
+
+      // Detach event handlers for selected features
+      map.featureGroupContainers.selected.selectAll('path')
+        .on('mouseover', null)
+        .on('mouseout', null);
+      map.features
+        // Display tooltip on mouseenter
+        .on('mouseenter', () => {
+          map.tooltip.style('display', 'inline');
+        })
+        // Hide tooltip on mouseleave
+        .on('mouseleave', () => {
+          map.tooltip.style('display', 'none');
+        })
+        // Move tooltip with cursor
+        .on('mousemove', tooltipMoveEventHandler)
+        // Add or remove feature on click
+        .on('click', featureClickEventHandler);
+      // Set labels' text
+      map.labels
+        .text(d => d.properties[map.label]);
+      // Add legend container.
+      map.legendPanel = d3Selection.select('#legend');
+      // If title element exists, change it to reflect currently selected variable, else create it
+      map.legendTitle = (map.legendTitle)
+        ? map.legendTitle.text(variable.name)
+        : map.legendPanel.append('h3')
+          .text(variable.name)
+          .classed('c-heading', true);
+      // If legend element does not exist, create it
+      if (!map.legend) {
+        map.legend = map.legendPanel
+          .append('ul')
+          .classed('c-list c-list--unstyled legend-list', true);
+      }
+      // Remove existing legend entries.
+      if (map.legendEntries) map.legendEntries.remove();
+      map.legendEntries = map.legend.selectAll('.legend-list__entry')
+        .data(map.colors)
+        .enter()
+        .append('li')
+        .classed('c-list__item legend-list__entry', true)
+        .attr('aria-label', 'Click here to select all features in this interval.');
+      map.legendGrid = map.legendEntries
+        .append('div')
+        // Highlight features of the group.
+        .on('mouseover', legendMouseoverEventHandler)
+        // Reset highlighting of the group.
+        .on('mouseleave', legendMouseleaveEventHandler)
+        // Make the group the current selection on click.
+        .on('click', legendClickEventHandler);
+      // Add legend color squares
+      map.legendGrid.append('svg')
+        .attr('width', '1.5em')
+        .attr('height', '1.5em')
+        .classed('legend-list__colordemo', true)
+        .append('rect')
+        .attr('width', '1.5em')
+        .attr('height', '1.5em')
+        .style('fill', d => d);
+
+      // Add text entries to color squares
+      map.legendGrid.append('div')
+        .classed('legend-list__text', true)
+        .text((d) => {
+          const legendRange = map.scale.invertExtent(d);
+          return `${map.format(legendRange[0])} - ${map.format(legendRange[1])}`;
+        });
+
+      if (map.settings.lat.value && map.settings.lon.value) {
+        const latLng = L.latLng(map.settings.lat.value, map.settings.lon.value);
+        const zoom = map.settings.zoom.value || 3;
+        map.mapContainer.setView(latLng, zoom);
+      } else {
+        map.mapContainer.fitBounds(map.pathBounds);
+        map.settings.zoom.value = map.mapContainer.getZoom();
+        const center = map.mapContainer.getCenter();
+        opts.controller.setState(opts.subview, map.settings.lat.urlParamKey, center.lat.toFixed(2));
+        opts.controller.setState(opts.subview, map.settings.lon.urlParamKey, center.lng.toFixed(2));
+        opts.controller.setState(opts.subview, map.settings.zoom.urlParamKey, map.settings.zoom.value);
+      }
+      // Atach event handlers for move and zoom events
+      map.mapContainer.on('moveend', moveEnd);
+      map.mapContainer.on('zoomend', zoomEnd);
+      applyFeatureStyles();
+    }
+    /**
+     * Map move event handler
+     * Gets executed on move end and updates the state with current latitute and longitude
+     * @param {Event} evt - Move end event
+     *
+     */
+    function moveEnd(evt) {
+      let {
+        lat, lng,
+      } = evt.target.getCenter();
+      lat = lat.toFixed(2);
+      lng = lng.toFixed(2);
+      map.settings.lat.value = lat;
+      map.settings.lon.value = lng;
+      opts.controller.setState(opts.subview, map.settings.lat.urlParamKey, lat);
+      opts.controller.setState(opts.subview, map.settings.lon.urlParamKey, lng);
+    }
+
+    /**
+     * Map zoom event handler
+     * Gets executed on zoom end and updates the state with current zoom level
+     * @param {Event} evt - Move end event
+     *
+     */
+    function zoomEnd(evt) {
+      const zoom = evt.target.getZoom();
+      map.settings.zoom.value = zoom;
+      opts.controller.setState(opts.subview, map.settings.zoom.urlParamKey, zoom);
+    }
+    /**
+     * Event Handler for clicks on features
+     * On click, toggle (add, remove) feature selection status
+     * @param {Object} d - Current d3 datum.
+     */
+    function featureClickEventHandler(d) {
+      const { features } = map.styleSettings;
+      const currentValue = d.properties[map.settings.variable.selected.key];
+      // If feature is added to the selection, apply styles for selected features
+      // and move it to the selected feature SVG group
+      if (opts.controller.toggleSelection(d)) {
+        d3Selection.select(this)
+          .style('fill', () => {
+            const color = features.selected.fill.multiHue.value
+              ? map.scale(currentValue)
+              : features.selected.fill.value;
+            return d3Color.rgb(color);
+          })
+          .style('fill-opacity', features.selected.fillOpacity.value);
+        map.featureGroupContainers.selected.node().appendChild(this);
+      // If feature is removed from the selection, apply styles for unselected features
+      // and move it to the unselected feature group
+      } else {
+        d3Selection.select(this)
+          .style('fill', () => {
+            const color = features.selected.fill.multiHue.value
+              ? map.scale(currentValue)
+              : features.base.fill.value;
+            return d3Color.rgb(color);
+          })
+          .style('fill-opacity', features.base.fillOpacity.value);
+        map.featureGroupContainers.base.node().appendChild(this);
+      }
+    }
+
+    /**
+     * Event Handler for feature mouseovers
+     * @param {Object} d - Current d3 datum.
+     */
+    function featureMouseOverEventHandler(d) {
+      const { selection } = tag.dataset;
+      if (!selection.has(d)) {
+        const {
+          fill,
+          stroke,
+          fillOpacity,
+          strokeWidth,
+        } = map.styleSettings.features.selected;
+        const currentFeatureValue = d.properties[map.settings.variable.selected.key];
+        // Apply selected feature style settings
+        d3Selection.select(this)
+          .style('fill', () => {
+            const color = fill.multiHue.value
+              ? map.scale(currentFeatureValue)
+              : fill.value;
+            return d3Color.rgb(color);
+          })
+          .style('stroke', () => {
+            const color = stroke.multiHue.value
+              ? map.scale(currentFeatureValue)
+              : stroke.value;
+            return d3Color.rgb(color);
+          })
+          .style('fill-opacity', fillOpacity.value)
+          .style('stroke-width', strokeWidth.value / map.featureSvgOverlay.scale);
+        // If selection does not have current feature, move it to selected feature container
+        map.featureGroupContainers.selected.node().appendChild(this);
+      }
+    }
+    /**
+     * Event Handler for feature mouseouts.
+     * @param {Object} d - Current d3 datum.
+     */
+    function featureMouseOutEventHandler(d) {
+      // If feature is not in selection, apply base feature styling.
+      if (!tag.dataset.selection.has(d)) {
+        const {
+          fill,
+          stroke,
+          fillOpacity,
+          strokeWidth,
+        } = map.styleSettings.features.base;
+        const currentFeatureValue = d.properties[map.settings.variable.selected.key];
+        d3Selection.select(this)
+          .style('fill', () => {
+            const color = fill.multiHue.value
+              ? map.scale(currentFeatureValue)
+              : fill.value;
+            return d3Color.rgb(color);
+          })
+          .style('stroke', () => {
+            const color = stroke.multiHue.value
+              ? map.scale(currentFeatureValue)
+              : stroke.value;
+            return d3Color.rgb(color);
+          })
+          .style('fill-opacity', fillOpacity.value)
+          .style('stroke-width', strokeWidth.value / map.featureSvgOverlay.scale);
+        // Move feature to base feature container
+        map.featureGroupContainers.base.node().appendChild(this);
+      }
+    }
+    /**
+     * Event handler to move the tooltip with the mouse.
+     *
+     */
+    function tooltipMoveEventHandler(d) {
+      const [x, y] = d3Selection.mouse(map.mapContainer.getPane('tooltipPane'));
+      const width = map.mapContainer.getSize().x;
+      const boundingClientRect = map.tooltip.node().getBoundingClientRect();
+
+      map.tooltip
+        .text(`${d.properties[map.tooltipLabel]}: ${map.format(d.properties[map.settings.variable.selected.key])}`)
+        .style('position', 'absolute')
+        .style('top', `${y - (boundingClientRect.height / 2)}px`);
+
+      if (x < width / 2) {
+        map.tooltip
+          .style('left', `${x + 40}px`)
+          .classed('c-bubble--left', false)
+          .classed('c-bubble--right', true);
+      } else {
+        map.tooltip
+          .style('left', `${x - boundingClientRect.width - 40}px`)
+          .classed('c-bubble--left', true)
+          .classed('c-bubble--right', false);
+      }
+    }
+    /**
+     * Event handler for legend entries
+     * @param {Object} d - Current selection's datum
+     */
+    function legendMouseoverEventHandler(d) {
+      const bounds = map.scale.invertExtent(d);
+      const { key } = map.settings.variable.selected;
+      const {
+        fill,
+        stroke,
+        fillOpacity,
+        strokeWidth,
+      } = map.styleSettings.features.selected;
+      map.features
+        .filter(e => e.properties[key] >= bounds[0] && e.properties[key] <= bounds[1])
+        .style('fill', (e) => {
+          const color = fill.multiHue.value
+            ? map.scale(e.properties[key])
+            : fill.value;
+          return d3Color.rgb(color);
+        })
+        .style('stroke', (e) => {
+          const color = stroke.multiHue.value
+            ? map.scale(e.properties[key])
+            : stroke.value;
+          return d3Color.rgb(color);
+        })
+        .style('fill-opacity', fillOpacity.value)
+        .style('stroke-width', strokeWidth.value / map.featureSvgOverlay.scale)
+        .nodes()
+        .forEach(node =>
+          map.featureGroupContainers.selected.node().appendChild(node));
+    }
+    function legendMouseleaveEventHandler() {
+      const { key } = map.settings.variable.selected;
+      const {
+        fill,
+        stroke,
+        fillOpacity,
+        strokeWidth,
+      } = map.styleSettings.features.base;
+      map.features
+        .filter(d => !tag.dataset.selection.has(d))
+        .style('fill', (d) => {
+          const color = fill.multiHue.value
+            ? map.scale(d.properties[key])
+            : fill.value;
+          return d3Color.rgb(color);
+        })
+        .style('stroke', (d) => {
+          const color = stroke.multiHue.value
+            ? map.scale(d.properties[key])
+            : stroke.value;
+          return d3Color.rgb(color);
+        })
+        .style('fill-opacity', fillOpacity.value)
+        .style('stroke-width', strokeWidth.value / map.featureSvgOverlay.scale)
+        .nodes()
+        .forEach(node =>
+          map.featureGroupContainers.base.node().appendChild(node));
+    }
+    function legendClickEventHandler(d) {
+      opts.controller.clearSelection();
+      const { key } = map.settings.variable.selected;
+      const addSelection = new Set();
+      const bounds = map.scale.invertExtent(d);
+      map.features
+        .filter(e => e.properties[key] >= bounds[0] && e.properties[key] <= bounds[1])
+        .each(e => addSelection.add(e));
+      opts.controller.addToSelection(addSelection);
+    }
+  </script>
+</map-choropleth>

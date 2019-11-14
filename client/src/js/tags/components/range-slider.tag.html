@@ -1,0 +1,72 @@
+/**
+ * Copyright (c) 2018 Sebastian Altenhuber, Patrick Humme
+ * 
+ * @file Implements a range slider combined with text input
+ * @author Sebastian Altenhuber <sebastian.altenhuber@gmail.com>
+ * @author Patrick Humme <pathumme@gmail.com>
+ */
+<range-slider-text>
+  <div>
+    <label class="c-label">
+      { opts.label }
+      <div class="o-grid">
+        <div class="o-grid__cell o-grid__cell--width-10">
+          <input type="text"
+            name={ opts.name }
+            value={ opts.start }
+            class="c-field"
+            onchange={ onChange }
+            ref="text">
+        </div>
+        <div class="o-grid__cell o-grid__cell--width-90">
+          <input type="range"
+            name={ opts.name }
+            class="c-range"
+            step={ opts.step }
+            min={ opts.min }
+            max={ opts.max }
+            value={ opts.start }
+            onchange={ onChange }
+            oninput={ onInput }
+            ref="range">
+        </div>
+      </div>
+    </label>
+  </div>
+  <script type="es6">
+    const tag = this;
+    tag.onChange = onChange;
+    tag.onInput = onInput;
+
+    // On mounting, add function to execute on slide to tag
+    tag.on('mount', () => {
+      if (opts.onSlide && typeof (opts.onSlide === 'function')) {
+        tag.onSlide = opts.onSlide;
+      }
+    });
+
+    function onChange(evt) {
+      const input = evt.target;
+      // If the text field is changed, change the slider
+      if (input.type === 'text') {
+        tag.refs.range.value = input.value;
+      // Otherwise change the text field
+      } else {
+        tag.refs.text.value = input.value;
+      }
+      // Execute function passed in options
+      tag.onSlide(evt);
+
+      // Append unit to text field if unit is defined
+      if (opts.unit) {
+        if (!tag.refs.text.value.endsWith(opts.unit)) {
+          tag.refs.text.value = input.value.concat(opts.unit);
+        }
+      }
+    }
+    // Immediately change text field on range slider input to visualize value
+    function onInput(evt) {
+      tag.refs.text.value = evt.target.value;
+    }
+  </script>
+</range-slider-text>

@@ -1,0 +1,189 @@
+/**
+ * Copyright (c) 2018 Sebastian Altenhuber, Patrick Humme
+ * 
+ * @file Map settings panel
+ * @author Sebastian Altenhuber <sebastian.altenhuber@gmail.com>
+ * @author Patrick Humme <pathumme@gmail.com>
+ */
+<map-settings-panel>
+  <h3>Settings</h3>
+  <div class="c-card">
+    <div class="c-card c-card__item c-card__item--divider c-card__item--divider--collapsed" onclick={ expand }>
+      Features
+    </div>
+    <div class="c-card__item c-card__item--collapsed">
+      <div each={ obj in opts.settings.features.color.controls }> 
+        <h4>{ obj.label }</h4>  
+        <label class="c-toggle">
+          <input type="checkbox" checked={ obj.multiHue.value } onchange={ this.parent.opts.settings.styleEventHandler(obj.multiHue) }>
+          <div class="c-toggle__track">
+            <div class="c-toggle__handle"></div>
+          </div>
+          Multi-Hue Enabled
+        </label>
+        <div if={ obj.multiHue.available && obj.multiHue.value }>
+          <colorpicker 
+            schemetype={ this.parent.opts.settings.features.color.colorSchemeType }
+            state={ state } 
+            changefn={ this.parent.opts.settings.features.color.setMultiHueColor }
+            parentitem={ this }
+            selectedscheme={ this.parent.opts.settings.features.color.multiHueColorScheme.key }
+            controller = { controller }
+          />
+        </div>
+        <div if={ (!obj.multiHue.available && !obj.multiHue.value) || (obj.multiHue.available && !obj.multiHue.value) }>
+          <input class="c-field"
+            type="color"
+            value={ obj.value }
+            name={ name }
+            onChange={ this.parent.opts.settings.styleEventHandler(obj) }>
+        </div>
+      </div>
+      <div each={ control in opts.settings.features.size.controls }>  
+        <range-slider-text 
+          name={ control.name } 
+          label={ control.label }
+          min={ control.min }
+          max={ control.max }
+          step={ control.step }
+          start={ control.value } 
+          on-slide={ this.parent.opts.settings.styleEventHandler(control) }
+          data={ control } 
+        />
+      </div>
+      <div each={ control in opts.settings.features.opacity.controls }>
+        <range-slider-text 
+          name={ control.name }
+          label={ control.label }
+          min={ 1 }
+          max={ 100 }
+          step={ 1 }
+          start={ control.value * 100 }
+          on-slide={ this.parent.opts.settings.styleEventHandler(control) }
+          data={ control } 
+        />
+      </div>
+    </div>
+    <div class="c-card c-card__item c-card__item--divider c-card__item--divider--collapsed" onclick={ expand }>
+      Labels
+    </div>
+    <div class="c-card__item c-card__item--collapsed">
+      <div each={ control in opts.settings.labels.toggle.controls }>
+        <label class="c-toggle">
+          { control.label }
+          <input type="checkbox"
+            checked={ control.value }
+            onchange={ this.parent.opts.settings.styleEventHandler(control) }
+            name={ control.name }>
+          <div class="c-toggle__track">
+            <div class="c-toggle c-toggle__handle"></div>
+          </div>
+        </label>
+      </div>
+      <div each={ option in opts.settings.labels.select }>
+        <label class="c-label">
+          { option.label }
+          <select onchange={ this.parent.opts.settings.settingsEventHandler(option) } class="c-field">
+            <option each={ option.options } value={ key }> { name }</option>
+          </select>
+        </label>
+      </div>
+      <div each={ control in opts.settings.labels.color.controls }>
+        <label class="c-label">
+          { control.label }
+          <input type="color" class="c-field" 
+            value={ control.value } 
+            name={ control.name } 
+            onchange={ this.parent.opts.settings.styleEventHandler(control) } 
+            style="height:3em;">
+        </label>
+      </div>
+      <div each= { control in opts.settings.labels.opacity.controls }>
+        <range-slider-text 
+          name={ control.name }
+          min={ 1 }
+          label={ control.label }
+          max={ 100 }
+          step={ 1 }
+          start={ control.value * 100 }
+          on-slide={ this.parent.opts.settings.styleEventHandler(control) }
+          data={ control } />
+      </div>
+      <div each={ control in opts.settings.labels.size.controls }>
+        <range-slider-text 
+          name={ control.name }
+          min={ control.min }
+          label={ control.label }
+          max={ control.max }
+          step={ 1 }
+          start={ control.value }
+          on-slide={ this.parent.opts.settings.styleEventHandler(control) }
+          data={ control } />
+
+      </div>
+    </div>
+    <div class="c-card c-card__item c-card__item--divider c-card__item--divider--collapsed" onclick={ expand }>
+      Tooltip
+    </div>
+    <div class="c-card__item c-card__item--collapsed">
+      <div each={ obj in opts.settings.tooltips.select.controls }>
+        <label class="c-label">
+          { obj.label }
+          <select onchange={ this.parent.opts.settings.settingsEventHandler(obj) } class="c-field">
+            <option each={ obj.options } value={ key }>{ name }</option>
+          </select>
+        </label>
+      </div>
+    </div>
+  </div>
+  <script type="es6">
+    const tag = this;
+    tag.expand = expand;
+    tag.setColor = setColor;
+    tag.on('before-mount', () => {
+      tag.state = opts.state;
+      tag.controller = opts.controller;
+    });
+    tag.on('update', () => {
+    });
+    
+    /**
+     * Expand or contract settings category
+     * @param {Event} evt - Click event.
+     */
+    function expand(evt) {
+      if (evt.target.classList.contains('c-card__item--divider--collapsed')) {
+        evt.target.classList.remove('c-card__item--divider--collapsed');
+        evt.target.classList.add('c-card__item--divider--expanded');
+      } else {
+        evt.target.classList.remove('c-card__item--divider--expanded');
+        evt.target.classList.add('c-card__item--divider--collapsed');
+      }
+      if (evt.target.nextElementSibling.classList.contains('c-card__item--collapsed')) {
+        evt.target.nextElementSibling.classList.remove('c-card__item--collapsed');
+        evt.target.nextElementSibling.classList.add('c-card__item--expanded');
+      } else {
+        evt.target.nextElementSibling.classList.remove('c-card__item--expanded');
+        evt.target.nextElementSibling.classList.add('c-card__item--collapsed');
+      }
+      opts.container.expand.call(opts.container);
+    }
+    /**
+     * On setting color scheme in the color picker, change the color
+     * scheme in all mounted color picker instances.
+     *
+     */
+    function setColor() {
+      /*
+      tag.multiHueColorScheme = colorScheme.key;
+      if (tag.tags.colorpicker.length) {
+        tag.tags.colorpicker.forEach(childTag => {
+          childTag.setColorScheme(tag.multiHueColorScheme);
+        })
+      } else {
+        tag.tags.colorpicker.setColorScheme(tag.multiHueColorScheme);
+      }
+      */
+    }
+  </script>
+</map-settings-panel>

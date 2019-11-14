@@ -1,0 +1,142 @@
+/**
+ * Copyright (c) 2018 Sebastian Altenhuber, Patrick Humme
+ * 
+ * @file Top bar component (navigation etc)
+ * @author Sebastian Altenhuber <sebastian.altenhuber@gmail.com>
+ * @author Patrick Humme <pathumme@gmail.com>
+ */
+<topbar>
+  <ul class="c-nav c-nav--inline">
+    <li class="c-nav__item" onclick={ toggleSidebar }>
+      <i class="fa fa-bars"></i> 
+      Region Dataviewer
+    </li>
+    <li class="c-nav__content visible--large">
+      { title }
+    </li>
+  </ul>
+  <script type="es6">
+    const tag = this;
+    tag.user = opts.state.user;
+    tag.view = opts.state.view;
+    tag.toggleSidebar = toggleSidebar;
+
+    opts.state.on('dataset::change', () => updateTitle());
+    opts.state.on('subview::change', () => updateTitle());
+    opts.state.on('view::change', () => updateTitle());
+
+    tag.allNavLinks = {
+      login: [
+        {
+          targetView: 'login',
+          label: 'Login',
+          url: '/login',
+        },
+      ],
+      index: [
+        {
+          targetView: 'welcome',
+          label: 'Welcome',
+          url: '/',
+        },
+        {
+          targetView: 'browse',
+          label: 'Browse Datasets',
+          url: '/browse',
+        },
+        {
+          targetView: 'about',
+          label: 'About',
+          url: '/about',
+        },
+      ],
+      viewDataset: [
+        {
+          targetView: 'overview',
+          label: 'Overview',
+        },
+        {
+          targetView: 'ms',
+          label: 'Map Select',
+        },
+        {
+          targetView: 'mc',
+          label: 'Choropleth Map',
+        },
+        {
+          targetView: 'bc',
+          label: 'Barchart',
+        },
+        {
+          targetView: 'sp',
+          label: 'Scatterplot',
+        },
+        {
+          targetView: 'dt',
+          label: 'Data Table',
+        },
+        {
+          targetView: 'bp',
+          label: 'Boxplot',
+        },
+        {
+          targetView: 'st',
+          label: 'Statistics',
+        },
+      ],
+      admin: [
+        {
+          targetView: 'add',
+          label: 'Add Dataset',
+        },
+        {
+          targetView: 'manage',
+          label: 'Manage Datasets',
+        },
+        {
+          targetView: 'user',
+          label: 'Edit User',
+        },
+        {
+          targetView: 'edit',
+          label: 'Edit Dataset',
+        },
+      ],
+    };
+    function toggleSidebar() {
+      opts.state.trigger('sidebar::toggle');
+    }
+    function updateTitle() {
+      if (opts.state.view === 'view') {
+        const { name } = opts.controller.dataset;
+        let subviewTitle;
+        console.log(tag.allNavLinks.view.find(link => link.targetView === opts.state.subview));
+        tag.allNavLinks.view.forEach((link) => {
+          if (link.targetView === opts.state.subview) {
+            subviewTitle = link.label;
+            tag.title = `${name} - ${subviewTitle}`;
+          }
+        });
+      } else if (opts.state.view === 'admin') {
+        const name = 'Admin Panel';
+        let subviewTitle;
+        tag.allNavLinks[opts.state.view].forEach((link) => {
+          if (link.targetView === opts.state.subview) {
+            subviewTitle = link.label;
+          }
+        });
+        tag.title = `${name} - ${subviewTitle}`;
+        if (!opts.state.subview) {
+          tag.title = 'Admin Panel - Welcome';
+        }
+      } else {
+        tag.allNavLinks[opts.state.view].forEach((link) => {
+          if (link.targetView === opts.state.subview) {
+            tag.title = link.label;
+          }
+        });
+      }
+      tag.update();
+    }
+  </script>
+</topbar>

@@ -1,0 +1,131 @@
+/**
+ * Copyright (c) 2018 Sebastian Altenhuber, Patrick Humme
+ * 
+ * @file Main content layout
+ * @author Sebastian Altenhuber <sebastian.altenhuber@gmail.com>
+ * @author Patrick Humme <pathumme@gmail.com>
+ */
+<view-content>
+  <div if={ loading } class="c-overlay c-overlay--visible"></div>
+  <div if={ loading } class="o-modal">
+    <div class="c-card">
+      <header class="c-card__header">
+        <h2 class="c-heading">
+          <i class="fa fa-circle-o-notch fa-spin"></i>
+           Dataset is loading...
+        </h2>
+      </header>
+      <div class="c-card__body">
+        Please wait while the dataset is loaded from the server.
+      </div>
+    </div>
+  </div>
+  <!-- Tabs for visualization tags -->
+  <div class="c-tabs__tab o-panel {c-tabs__tab--active: state.subview === "overview"}">
+    <view-overview 
+      state={ opts.state } 
+      controller={ opts.controller } 
+      dataset={ dataset } />
+  </div>
+  <div class="c-tabs__tab o-panel {c-tabs__tab--active: state.subview === "ms"}">
+    <map-select 
+      controller={ opts.controller } 
+      state={ opts.state } 
+      dataset={ dataset } 
+      subview="ms" />
+  </div>
+  <div class="c-tabs__tab o-panel {c-tabs__tab--active: state.subview === "mc"}">
+    <map-choropleth 
+      controller={ opts.controller } 
+      state={ opts.state } 
+      dataset={ dataset } 
+      subview="mc" />
+  </div>
+  <div class="c-tabs__tab o-panel {c-tabs__tab--active: state.subview === "sp"}">
+    <chart-scatter 
+      controller={ opts.controller } 
+      state={ opts.state } 
+      dataset={ dataset } 
+      subview="sp" />
+  </div>
+  <div class="c-tabs__tab o-panel {c-tabs__tab--active: state.subview === "bc"}">
+    <chart-bar 
+      controller={ opts.controller } 
+      state={ opts.state } 
+      dataset={ dataset } 
+      subview="bc" />
+  </div>
+  <div class="c-tabs__tab o-panel {c-tabs__tab--active: state.subview === "dt"}">
+    <view-datatable 
+      controller={ opts.controller } 
+      state={ opts.state } 
+      dataset={ dataset } 
+      subview="dt" />
+  </div>
+  <div class="c-tabs__tab o-panel {c-tabs__tab--active: state.subview === "bp"}">
+    <chart-boxplot 
+      controller={ opts.controller } 
+      state={ opts.state } 
+      dataset={ dataset } 
+      subview="bp" />
+  </div>
+  <div class="c-tabs__tab o-panel {c-tabs__tab--active: state.subview === "st"}">
+    <statistics 
+      controller={ opts.controller } 
+      state={ opts.state } 
+      dataset={ dataset } 
+      subview="st" />
+  </div>
+  <div class="c-tabs__tab o-panel {c-tabs__tab--active: state.subview === "corr"}">
+    <correlation 
+      controller={ opts.controller } 
+      state={ opts.state } 
+      dataset={ dataset } 
+      subview="corr" />
+  </div>
+  <script type="es6">
+    const tag = this;
+    tag.state = opts.state;
+    tag.loading = false;
+
+    tag.controller = opts.controller;
+
+    tag.on('mount', () => {
+      // On page mount, start loading the dataset and display loading indicator
+      tag.update({ loading: true });
+      if (opts.state.updated === true) {
+        delete opts.controller.metaDataPromise;
+        delete opts.controller.dataPromise;
+        opts.state.updated = false;
+      }
+      // First load metadata
+      opts.controller.loadMetadata()
+        // Then load entire dataset file
+        .then(() => opts.controller.loadFile())
+        .then((dataset) => {
+          // Propagate new dataset to all tags
+          tag.update({ dataset });
+          tag.state.trigger('dataset::change', { name: dataset.name });
+          // Error handling - mount error tag upon error
+        }).catch((error) => {
+          console.error(error);
+          riot.mount('view-content', 'view-error', { error });
+        })
+        // At the end, hide the loading indicator
+        .finally(() => {
+          tag.update({ loading: false });
+        });
+    });
+    tag.state.on('subview::change', () => {
+      tag.update();
+    });
+
+    tag.on('before-mount', () => {
+      tag.subview = opts.state.subview;
+    });
+
+    tag.on('update', () => {
+      tag.subview = opts.state.subview;
+    });
+  </script>
+</view-content>

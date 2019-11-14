@@ -1,0 +1,100 @@
+/**
+ * Copyright (c) 2018 Sebastian Altenhuber, Patrick Humme
+ * 
+ * @file Admin section - user management
+ * @author Sebastian Altenhuber <sebastian.altenhuber@gmail.com>
+ * @author Patrick Humme <pathumme@gmail.com>
+ */
+<admin-user>
+  <h2 class="c-heading">Edit User</h2>
+  <div class="o-grid">
+    <div class="o-grid__cell--width-33@large o-grid__cell--width-100@xsmall">
+      <label class="c-label o-form-element">
+        Username
+        <div class="c-field c-field--disabled">{ user.username }</div>
+      </label>
+      <label class="c-label o-form-element">
+        First Name
+        <input class="c-field c-field--label" name="first_name" value={ user.first_name } onkeyup={ change }>
+      </label>
+      <label class="c-label o-form-element">
+        Last Name
+        <input class="c-field c-field--label" name="last_name" value={ user.last_name } onkeyup={ change }>
+      </label>
+      <label class="c-label o-form-element">
+        Email
+        <input class="c-field c-field--label" name="email" value={ user.email } onkeyup={ change }>
+      </label>
+      <label class="c-label o-form-element">
+        Change Password
+        <input type="password" ref="password" class="c-field c-field--label" onkeyup={ changePassword }>
+      </label>
+      <label if={ passwordEntered } class="c-label o-form-element">
+        Password Verification
+        <input type="password" ref="passwordverify" class="c-field c-field--label" onkeyup={ changePassword }>
+        <div if={ !passwordMatch } class="c-hint c-hint--static c-hint--error">Passwords entered do not match</div>
+      </label>
+      <button type="button" class="c-button c-button--success" onclick={ submit }>Save</button>
+      <button type="button" class="c-button c-button--error" onclick={ cancel }>Cancel</button>
+    </div>
+  </div>
+  <script type="es6">
+    const tag = this;
+    tag.change = change;
+    tag.changePassword = changePassword;
+    tag.cancel = cancel;
+    tag.user = {};
+    tag.title = 'Admin Panel - Edit User';
+    tag.submit = submit;
+    tag.passwordMatch = false;
+    tag.passwordEntered = false;
+    const changes = {};
+    const password = {};
+    tag.on('mount', () => {
+      opts.controller.getUser()
+        .then(response => tag.update({ user: response }))
+        .catch((error) => {
+          if (error.status === 401) {
+            riot.route('/login');
+          }
+        });
+    });
+
+    function change(evt) {
+      const { name, value } = evt.target;
+      changes[name] = {
+        prevVal: tag.user[name],
+        currVal: value,
+        elem: evt.target,
+      };
+    }
+
+    function changePassword(evt) {
+      tag.passwordEntered = true;
+      if (evt.target === tag.refs.password) password.first = evt.target.value;
+      if (evt.target === tag.refs.passwordverify) password.second = evt.target.value;
+      if (password.first === password.second) {
+        tag.passwordMatch = true;
+        changes.password = {
+          currVal: evt.target.value,
+        };
+      }
+    }
+
+    function submit() {
+      const user = {};
+      Object.keys(changes).forEach((key) => {
+        user[key] = changes[key].currVal;
+      });
+      opts.controller.updateUser(JSON.stringify({ user }));
+    }
+
+    function cancel() {
+      Object.keys(changes).forEach((key) => {
+        const elementChange = changes[key];
+        if (elementChange.elem) elementChange.elem.value = elementChange.prevVal || '';
+        delete changes[key];
+      });
+    }
+  </script>
+</admin-user>

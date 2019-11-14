@@ -1,0 +1,22 @@
+/**
+ * Copyright (c) 2018 Sebastian Altenhuber, Patrick Humme
+ * 
+ * @file Dataset fetching error
+ * @author Sebastian Altenhuber <sebastian.altenhuber@gmail.com>
+ * @author Patrick Humme <pathumme@gmail.com>
+ */
+<view-error>
+  <h2 class="c-heading">
+    Error { error.status }
+  </h2>
+  <p class="c-paragraph">
+    { message } 
+  </p>
+  <script>
+    const tag = this;
+    tag.error = opts.error;
+    if (tag.error.status === 404) {
+      tag.message = 'The dataset with the requested id could not be found on the server.';
+    }
+  </script>
+</view-error>

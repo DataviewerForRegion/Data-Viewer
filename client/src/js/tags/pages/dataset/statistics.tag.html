@@ -1,0 +1,472 @@
+/**
+ * Copyright (c) 2018 Sebastian Altenhuber, Patrick Humme
+ * 
+ * @file Provides descriptive statistics, histograms and Pearson's correlation coefficient of attributes
+ * @author Sebastian Altenhuber <sebastian.altenhuber@gmail.com>
+ * @author Patrick Humme <pathumme@gmail.com>
+ */
+<statistics>
+  <div class="c-tabs">
+    <div class="c-tabs__headings">
+      <div ref="descriptive" 
+        class="c-tab-heading {c-tab-heading--active: !settings.corrTabActive.value }" 
+        onclick={ switchTab }>
+        Descriptive Statistics
+      </div>
+      <div ref="correlation" 
+        class="c-tab-heading {c-tab-heading--active: settings.corrTabActive.value } 
+        c-tab-heading" 
+        onclick={ switchTab }>
+        Correlation
+      </div>
+    </div>
+    <div class="c-tabs__tab {c-tabs__tab--active: !settings.corrTabActive.value }">
+      <label class="c-label o-form-element">
+        Select Attribute:
+        <select class="c-field" 
+          onchange={ selectDescriptivesAttribute }>
+          <option each={ attributes } 
+            value={ key } 
+            selected={ key === settings.histogramAttribute.selected.key }>
+            { name }
+          </option> 
+        </select>
+      </label>
+      <div class="o-grid o-grid--small-full o-grid--large-fit">
+        <div class="o-grid__cell">
+          <div class="c-list c-list--unstyled">
+            <div class="c-list__item">
+              <span class="c-text--loud">
+                Name:
+              </span>
+              { attribute.name }
+            </div>
+            <div class="c-list__item">
+              <span class="c-text--loud">
+                Description:
+              </span>
+              { attribute.description }
+            </div>
+            <div class="c-list__item">
+              <span class="c-text--loud">
+                Number of entries:
+              </span>
+              { attribute.count }
+            </div>
+            <div class="c-list__item">
+              <span class="c-text--loud">
+                Min:
+              </span>
+              { attribute.min }
+            </div>
+            <div class="c-list__item">
+              <span class="c-text--loud">
+                Mean:
+              </span>
+              { attribute.mean }
+            </div>
+            <div class="c-list__item">
+              <span class="c-text--loud">
+                Max:
+              </span>
+              { attribute.max }
+            </div>
+            <div class="c-list__item">
+              <span class="c-text--loud">
+                Q1: 
+              </span>
+              { attribute.q1 }
+             </div>
+            <div class="c-list__item">
+              <span class="c-text--loud">
+                Q2:
+              </span>
+              { attribute.q2 }
+            </div>
+            <div class="c-list__item">
+              <span class="c-text--loud">
+                Q3:
+              </span>
+              { attribute.q3 }
+            </div>
+            <div class="c-list__item">
+              <span class="c-text--loud">
+                Variance:
+              </span>
+              { attribute.variance }
+            </div>
+            <div class="c-list__item">
+              <span class="c-text--loud">
+                Standard Deviation:
+              </span>
+              { attribute.deviation }
+            </div>
+          </div>
+        </div>
+        <div ref="histogram" class="o-grid__cell histogram--container">
+        </div>
+      </div>
+    </div>
+    <div class="c-tabs__tab c-tabs__tab {c-tabs__tab--active: settings.corrTabActive.value }">
+      <label class="c-label o-form-element">
+        Select Attribute:
+        <select class="c-field" 
+          onchange={ selectCorrelationAttribute }>
+          <option each={ attributes } 
+            value={ key } 
+            selected={ key === settings.correlationAttribute.selected.key }>
+            { name }
+          </option> 
+        </select>
+      </label>
+      <h3 class="c-heading" if={ settings.correlationAttribute.selected }>
+        Pearson Correlation Coefficient of { settings.correlationAttribute.selected.name }
+      </h3>
+      <ul class="c-list c-list--unstyled">
+        <li each={ correlation } class="c-list__item">
+          <span class="c-text--loud">
+            &#961;<sub>({ settings.correlationAttribute.selected.name }, { name })</sub>
+          </span>
+          =  { corr }
+        </li>
+      </ul>
+    </div>
+  </div>
+  <script type="es6">
+    import * as d3Selection from 'd3-selection';
+    import * as d3Array from 'd3-array';
+    import * as d3Format from 'd3-format';
+    import * as d3Scale from 'd3-scale';
+    import * as d3Axis from 'd3-axis';
+
+    const tag = this;
+    // Make event handlers available in tag
+    tag.init = init;
+    tag.selectDescriptivesAttribute = selectDescriptivesAttribute;
+    tag.selectCorrelationAttribute = selectCorrelationAttribute;
+    tag.switchTab = switchTab;
+    tag.resize = resize;
+    
+    // Initialize variables
+    tag.attribute = {};
+    tag.format = d3Format.format('.2s');
+
+    // Add mixins
+    tag.mixin('parseState');
+    tag.mixin('getData');
+
+    // Initialize tag settings
+    tag.settings = {
+      corrTabActive: {
+        value: false,
+        urlParamKey: 'corr',
+        type: 'boolean',
+      },
+      histogramAttribute: {
+        selected: undefined,
+        urlParamKey: 'hs',
+        get options() { return tag.attributes; },
+        type: 'select',
+
+      },
+      correlationAttribute: {
+        selected: undefined,
+        urlParamKey: 'co',
+        get options() { return tag.attributes; },
+        type: 'select',
+      },
+    };
+    /**
+     * Switch between descriptives/histogram and correlation tab
+     * @param {Event} evt - Input event with the selected value
+     */
+    function switchTab(evt) {
+      const { corrTabActive } = tag.settings;
+      // Set the correct tab to be active
+      if (evt.target === tag.refs.correlation) {
+        tag.settings.corrTabActive.value = true;
+      } else {
+        tag.settings.corrTabActive.value = false;
+      }
+      // Save to state
+      opts.controller.setState(opts.subview, corrTabActive.urlParamKey, (corrTabActive.value) ? 1 : 0);
+    }
+
+    function init(dataset) {
+      if (!tag.created) {
+        // Descriptive statistics initialization
+        tag.attributes = dataset.Attributes.values;
+        const attributeObject = {};
+        // Parse url parameters to this tag's settings
+        tag.parseState(tag.settings, undefined, 'urlParamKey');
+        // Create data array
+        tag.attributes
+          .map(attribute => attribute.key)
+          .forEach((key) => {
+            const values = [];
+            dataset.json.features.forEach((attribute) => {
+              values.push(attribute.properties[key]);
+            });
+            attributeObject[key] = values;
+          });
+        tag.data = attributeObject;
+        // If no attribute keys were parsed from the url parameters, select the first one as default
+        if (!tag.settings.histogramAttribute.selected) {
+          [tag.settings.histogramAttribute.selected] = tag.attributes;
+        }
+        if (!tag.settings.correlationAttribute.selected) {
+          [tag.settings.correlationAttribute.selected] = tag.attributes;
+        }
+        // Calculate descriptive statistics and histogram
+        calculateDescriptives(tag.data, tag.settings.histogramAttribute.selected);
+        // Calculate correlation
+        calculateCorrelation(tag.settings.correlationAttribute.selected);
+      }
+    }
+    function calculateCorrelation(selectedAttribute) {
+      // Fixed point notation with 2 places after decimal
+      const format = d3Format.format(',.2f');
+      const xArray = tag.dataset.json.features
+        .map(feature => feature.properties[selectedAttribute.key]);
+      // Calculate correlation of the currently selected attribute with all other attributes
+      tag.correlation = tag.attributes
+        .map((attribute) => {
+          const attr = attribute;
+          const yArray = tag.dataset.json.features
+            .map(feature => feature.properties[attribute.key]);
+          const xyDeviation = d3Array.deviation(xArray) * d3Array.deviation(yArray);
+          attr.corr = covariance(xArray, yArray) / xyDeviation;
+          attr.corr = format(attr.corr);
+          return attr;
+        });
+    }
+
+    /**
+     * Event handler to select the correlation attribute
+     * @param {Event} evt - Input event
+     */
+    function selectCorrelationAttribute(evt) {
+      const {
+        correlationAttribute,
+        correlationAttribute: { urlParamKey },
+      } = tag.settings;
+      // Find the selected attribute and save to settings
+      correlationAttribute.selected = tag.attributes
+        .find(attribute => attribute.key === evt.target.value);
+      // Set state in controller
+      opts.controller.setState(opts.subview, urlParamKey, correlationAttribute.selected.key);
+      // Recalculate correlation
+      calculateCorrelation(correlationAttribute.selected);
+    }
+    /**
+     * Event handler to select the descriptive statistcs / histogram attribute
+     * @param {Event} evt - Input event
+     */
+    function selectDescriptivesAttribute(evt) {
+      const {
+        histogramAttribute,
+        histogramAttribute: { urlParamKey },
+      } = tag.settings;
+      histogramAttribute.selected = tag.attributes
+        .find(attribute => attribute.key === evt.target.value);
+      opts.controller.setState(opts.subview, urlParamKey, histogramAttribute.selected.key);
+      calculateDescriptives(tag.data, histogramAttribute.selected);
+    }
+    /**
+     * Calculate descriptive statistics
+     * @param {Object} data - Object with attribute keys as keys and arrays of values as values
+     * @param {Object} attribute - The currently selected attribute
+     */
+    function calculateDescriptives(data, attribute) {
+      const { format } = tag;
+      tag.attribute.name = attribute.name;
+      tag.attribute.description = attribute.description;
+      tag.attribute.count = data[attribute.key].length;
+      tag.attribute.min = format(d3Array.min(data[attribute.key]));
+      tag.attribute.max = format(d3Array.max(data[attribute.key]));
+      tag.attribute.mean = format(d3Array.mean(data[attribute.key]));
+      const sortedArray = data[attribute.key]
+        .sort((a, b) => d3Array.ascending(a, b));
+      tag.sortedArray = sortedArray;
+      tag.attribute.q1 = format(d3Array.quantile(sortedArray, 0.25));
+      tag.attribute.q2 = format(d3Array.quantile(sortedArray, 0.5));
+      tag.attribute.q3 = format(d3Array.quantile(sortedArray, 0.75));
+      tag.attribute.variance = format(d3Array.variance(data[attribute.key]));
+      tag.attribute.deviation = format(d3Array.deviation(data[attribute.key]));
+      const container = tag.refs.histogram;
+      const margin = {
+        top: 40, right: 40, left: 80, bottom: 80,
+      };
+      drawHistogram(sortedArray, container, container.clientHeight, container.clientWidth, margin);
+    }
+    
+    function resize() {
+      const container = tag.refs.histogram;
+      const margin = {
+        top: 40, right: 40, left: 80, bottom: 80,
+      };
+      drawHistogram(tag.sortedArray, container, container.clientHeight, container.clientWidth, margin);
+    }
+    /**
+     * Draw or update the histogram according to selected data
+     * @param {Array} data - Array of features' values
+     * @param {HTMLElement} container - The HTML element to draw the histogram in
+     * @param {Number} height - Height of the histogram
+     * @param {Number} width - Width of the histogram
+     * @param {Object} margin - Object containing all margins (top, right, bottom, left)
+     */
+    function drawHistogram(data, container, height, width, margin) {
+      const { format } = tag;
+      // Create svg element
+      if (!tag.svg) {
+        tag.svg = d3Selection.select(container)
+          .append('svg');
+      }
+      // Set svg element width and height
+      tag.svg
+        .attr('width', width)
+        .attr('height', height);
+
+      // Create svg element group
+      if (!tag.g) {
+        tag.g = tag.svg.append('g');
+      }
+
+      // Set element group transfrom
+      tag.g
+        .attr('transform', `translate(${margin.left}, ${margin.top})`);
+
+      // Calculate width and height without margins
+      const chartWidth = width - margin.left - margin.right;
+      const chartHeight = height - margin.top - margin.bottom;
+
+      // Create xScale if it does not exist
+      if (!tag.xScale) {
+        tag.xScale = d3Scale.scaleLinear();
+      }
+      // Set xScale range and domain, nicen for pixel accurate display
+      tag.xScale
+        .rangeRound([0, chartWidth])
+        .domain([0, d3Array.max(data)])
+        .nice();
+
+      // Create histogram bins and add data
+      const bins = d3Array.histogram()
+        .domain([0, d3Array.max(data)])
+        .thresholds(tag.xScale.ticks())(data);
+
+      // Create yScae if it does not exist
+      if (!tag.yScale) {
+        tag.yScale = d3Scale.scaleLinear();
+      }
+      // Set yScale range and domain
+      tag.yScale
+        // Add 10 per cent for head room
+        .domain([0, 1.1 * d3Array.max(bins, d => d.length)])
+        .range([chartHeight, 0]);
+
+      // Remove existing bars
+      tag.g.selectAll('.bar')
+        .remove();
+
+      // Data join for bar groups
+      let bar = tag.g.selectAll('.bar')
+        .data(bins);
+
+      // Append bar groups to enter selection
+      bar = bar
+        .enter()
+        .append('g')
+        .attr('class', 'bar')
+        // Translate by lower bound of bin on xScale and bin size (length) on yScale
+        .attr('transform', d => `translate(${tag.xScale(d.x0)},${tag.yScale(d.length)})`);
+
+      // Append rectangles to bar groups
+      bar.append('rect')
+        // Add 2 pixels spacing between bars
+        .attr('x', 2)
+        // Width of bars is scaled upper- minus lower bound of the bin
+        .attr('width', `${tag.xScale(bins[0].x1) - tag.xScale(bins[0].x0) - 2}px`)
+        // Height is the size of occurences in the bin (length)
+        .attr('height', d => chartHeight - tag.yScale(d.length));
+      // Append occurence count of bins on top of bars
+      bar.append('text')
+        .text(d => d.length)
+        .attr('dy', '-0.5em')
+        .attr('dx', `${(tag.xScale(bins[0].x1) - tag.xScale(bins[0].x0) - 2) / 2}px`)
+        .style('text-anchor', 'middle')
+        .style('fill', '#000');
+
+      // Append xAxis svg group if it does not exist
+      if (!tag.xAxis) {
+        tag.xAxis = tag.g
+          .append('g')
+          .attr('class', 'axis axis--x');
+      }
+      // Call xAxis with xScale and tick format
+      tag.xAxis
+        .attr('transform', `translate(0,${chartHeight})`)
+        .call(d3Axis.axisBottom(tag.xScale).tickFormat(format).ticks(10));
+      // Append xAxis label if it does not exist
+      if (!tag.xAxisLabel) {
+        tag.xAxisLabel = tag.xAxis.append('text')
+          .attr('dy', '2em')
+          .style('font-size', '16px')
+          .style('text-anchor', 'end')
+          .style('fill', '#000')
+          .text('Value');
+      }
+      tag.xAxisLabel
+        .attr('x', chartWidth);
+
+      // Append yAxis svg group if it does not exist
+      if (!tag.yAxis) {
+        tag.yAxis = tag.g
+          .append('g')
+          .classed('axis axis--y', true);
+      }
+
+      // Call yAxis with yScale
+      tag.yAxis
+        .call(d3Axis.axisLeft(tag.yScale));
+
+      // Append yAxis label if it does not exist
+      if (!tag.yAxisLabel) {
+        tag.yAxisLabel = tag.yAxis.append('text')
+          .style('transform', 'rotate(-90deg)')
+          .attr('dy', '-2em')
+          .text('Frequency')
+          .style('font-size', '16px')
+          .style('text-anchor', 'end')
+          .style('fill', '#000');
+      }
+    }
+    /**
+     * Calculate covariance for two arrays of numbers.
+     * @param {<Array>Number} array0 - First array.
+     * @param {<Array>Number} array1 - Second array.
+     * @returns {Number} - Covariance
+     */
+    function covariance(array0, array1) {
+      let m0 = 0;
+      let m1 = 0;
+      let m01 = 0;
+      const n = array0.length;
+      let j = 0;
+      for (let i = 0; i < n; i += 1) {
+        const x = array0[i];
+        const y = array1[i];
+        j += 1;
+        const d0 = (x - m0) / j;
+        const d1 = (y - m1) / j;
+        m0 += d0;
+        m1 += d1;
+        m01 += ((j - 1) * d0 * d1) - (m01 / j);
+      }
+      if (j > 1 && n === array1.length) {
+        return (j / (j - 1)) * m01;
+      }
+      return undefined;
+    }
+    </script>
+</statistics>

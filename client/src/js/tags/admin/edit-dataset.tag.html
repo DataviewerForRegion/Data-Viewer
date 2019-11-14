@@ -1,0 +1,356 @@
+/**
+ * Copyright (c) 2018 Sebastian Altenhuber, Patrick Humme
+ *
+ * @file Edit a single dataset's attributes
+ * @author Sebastian Altenhuber <sebastian.altenhuber@gmail.com>
+ * @author Patrick Humme <pathumme@gmail.com>
+ */
+<admin-edit>
+  <h2 class="c-heading c-heading--medium">Edit Dataset</h2>
+  <div if={ isLoading }>
+    <div class="c-overlay"></div>
+    <div class="o-modal">
+      <div class="c-card">
+        <header class="c-card__header">
+          <h2 class="c-heading">
+            <i class="fa fa-circle-o-notch fa-spin fa-fw"></i>
+            Data is loading...
+          </h2>
+        </header>
+        <div class="c-card__body">
+          Please wait while data is loading !
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="c-paragraph">Edit the dataset's metadata. Please be aware, that it has to be set to "active" in order to be available to be seen and browsed by non-administrative users!</p>
+  <div class="c-alerts c-alerts--topright">
+    <div class="c-alert { message.type }" if={ message.show }>
+      <button type="button"
+        class="c-button c-button--close"
+        onclick={ closeMessage }>
+        <i class="fa fa-times"></i>
+      </button>
+      { message.msg }
+    </div>
+  </div>
+  <form ref="edit">
+    <fieldset class="o-fieldset">
+      <label class="c-toggle">
+        <input type="checkbox" name="is_active" onchange={ change } checked={ dataset.is_active }>
+        <div class="c-toggle__track">
+          <div class="c-toggle__handle"></div>
+        </div>
+        <span class="c-tooltip c-tooltip--right"
+          aria-label="Whether this dataset is published and can be seen by normal users.">
+          Active
+        </span>
+      </label>
+      <label class="c-label o-form-element">
+        Dataset Name <span class="error--required">(required)</span>
+        <input class="c-field"
+          type="text"
+          name="name"
+          value={ dataset.name }
+          onkeyup={ change }
+          required />
+      </label>
+      <label class="c-label o-form-element">
+        Description
+        <textarea class="c-field"
+          type="text"
+          name="description"
+          onkeyup={ change }
+          value={ dataset.description }
+          required />
+      </label>
+      <label class="c-label o-form-element">
+        URL
+        <input class="c-field"
+          type="text"
+          name="url"
+          value={ dataset.url }
+          onkeyup={ change } />
+      </label>
+      <label class="c-label o-form-element">
+        Projection
+        <input class="c-field"
+          type="text"
+          name="projection"
+          value={ dataset.projection }
+          onkeyup={ change } />
+      </label>
+    </fieldset>
+    <div class="c-table c-table--striped">
+      <div class="c-table__row c-table__row--heading">
+        <span class="c-table__cell">Key</span>
+        <span class="c-table__cell">Name</span>
+        <span class="c-table__cell">Description</span>
+        <span class="c-table__cell" style="max-width:150px;">Use as Label</span>
+        <span class="c-table__cell" style="max-width:200px;">Type</span>
+        <span class="c-table__cell" style="max-width:150px;">Set Active</span>
+      </div>
+      <div each={ attribute, i in dataset.Attributes } class="c-table__row">
+        <span class="c-table__cell">
+          { attribute.key }
+        </span>
+        <input type="hidden"
+          name="key"
+          value={ attribute.key } />
+        <input if={ attribute.id }
+          type="hidden"
+          name="attributes.{ i }.id"
+          value={ attribute.id } />
+        <span class="c-table__cell">
+          <input type="text" 
+            name="name"
+            value={ attribute.name }
+            onkeyup={ change }
+            style="width:100%;"
+            required />
+        </span>
+        <span class="c-table__cell">
+          <input type="text"
+            name="description"
+            value={ attribute.description }
+            onkeyup={ change }
+            style="width:100%;" />
+        </span>
+        <span class="c-table__cell" style="max-width:150px;">
+          <input type="checkbox"
+            onclick={ select }
+            name="is_label"
+            checked={ attribute.is_label }
+            onchange={ change } /> 
+        </span>
+        <span class="c-table__cell" style="max-width:200px;">
+          <select name="type"
+            disabled={ attribute.is_label }
+            onchange={ change }
+            class="c-field">
+            <option value="string"
+              selected={ attribute.type === "string" || attribute.is_label}>
+              String
+            </option>
+            <option value="number"
+              selected={ attribute.type === "number" }>
+                Number
+            </option>
+            <option value="bool"
+              selected={ attribute.type === "boolean"}>
+              Boolean
+            </option>
+          </select>
+        </span>
+        <span class="c-table__cell" style="max-width:150px;">
+          <input type="checkbox"
+            name="is_active"
+            checked={ attribute.is_active }
+            onchange={ change } />  
+        </span>
+      </div>
+    </div>  
+    <div class="c-table c-table--striped">
+      <div class="c-table__row c-table__row--heading">
+        <span class="c-table__cell">File ID</span>
+        <span class="c-table__cell">File Name</span>
+        <span class="c-table__cell">File Type</span>
+      </div>
+      <div each={ file, i in dataset.Files } class="c-table__row">
+        <span class="c-table__cell">
+          { file.id }
+        </span>
+        <span class="c-table__cell">
+          { file.name }
+        </span>
+        <span class="c-table__cell">
+          { file.type }
+        </span>
+      </div>
+    </div>  
+  </form>
+  <button class="c-button c-button--success"
+    value="Save"
+    onclick={ submit }>
+    Save
+  </button>
+  <button class="c-button c-button--error"
+    value="Reset"
+    onclick={ reset }>
+    Reset
+  </button>
+  <script type="es6">
+    import * as d3Selection from 'd3-selection';
+
+    const tag = this;
+    tag.isLoading = false;
+    tag.submit = submit;
+    tag.change = changeEvtHandler;
+    tag.closeMessage = closeMsgEvtHandler;
+    tag.reset = reset;
+
+    tag.message = {};
+
+    tag.changes = {
+      dataset: {
+        attributes: {
+        },
+      },
+    };
+
+    tag.on('before-mount', () => {
+      tag.dataset = {};
+    });
+    // Close message display on button click
+    function closeMsgEvtHandler() {
+      tag.message.show = false;
+    }
+
+    // Reset all changes made to the dataset's values
+    function reset() {
+      Object.keys(tag.changes.dataset)
+        .filter(key => key !== 'attributes')
+        .forEach((key) => {
+          const { elem, previousValue } = tag.changes.dataset[key];
+          if (elem.type === 'checkbox') {
+            elem.checked = previousValue;
+          } else {
+            elem.value = previousValue || '';
+          }
+        });
+      Object.keys(tag.changes.dataset.attributes)
+        .forEach((key) => {
+          const attributeKey = Object.keys(tag.changes.dataset.attributes[key]);
+          const { previousValue, elem } = tag.changes.dataset.attributes[key][attributeKey];
+          if (elem.type === 'checkbox') {
+            elem.checked = previousValue;
+          } else {
+            elem.value = previousValue || '';
+          }
+        });
+      tag.changes = {
+        dataset: {
+          attributes: {},
+        },
+      };
+    }
+    /**
+     * On input change, save changes to changes object
+     * @param {Event} evt - Input event
+     */
+    function changeEvtHandler(evt) {
+      const { target, item } = evt;
+      const value = (target.type === 'checkbox') ? target.checked : target.value;
+      // If event has item attached to it (true for all dataset attributes)
+      if (item) {
+        const { id } = item.attribute;
+        const { attributes } = tag.changes.dataset;
+        // If attribute already has a change object, set element's current value
+        if (id in attributes && target.name in attributes[id]) {
+          const varChanges = attributes[id][target.name];
+          varChanges.currentValue = value;
+        // Otherwise create a new change object for the attribute
+        } else {
+          if (!(id in attributes)) {
+            attributes[id] = {};
+          }
+          attributes[id][target.name] = {
+            currentValue: value,
+            previousValue: item.attribute[target.name],
+            elem: target,
+          };
+        }
+        // Case when attribute gets set as label, set type to string
+        if (target.name === 'is_label') {
+          // Get handle to type select field
+          const typeField = d3Selection
+            .select(target.parentElement.parentElement)
+            .select('select')
+            .node();
+          // If type already has a change object, set element's current value
+          if (id in attributes && 'type' in attributes[id]) {
+            if (value) {
+              attributes[id].type.currentValue = 'string';
+            } else {
+              attributes[id].type.currentValue = attributes[id].type.previousValue;
+            }
+          } else {
+            attributes[id].type = {
+              currentValue: 'string',
+              previousValue: item.attribute.type,
+              elem: typeField,
+            };
+          }
+        }
+        item.attribute[target.name] = value;
+      // Case for all dataset attributes (name, description, url, projection)
+      } else {
+        tag.changes.dataset[target.name] = {
+          currentValue: value,
+          previousValue: tag.dataset[target.name],
+          elem: target,
+        };
+      }
+    }
+    // Save changes made to the server
+    function submit() {
+      const changes = getFormData();
+      opts.controller.updateData(JSON.stringify(changes))
+        .then((response) => {
+          if (response.done === true) {
+            tag.message.msg = 'Data successfully saved!';
+            tag.message.type = 'c-alert--success';
+            tag.message.show = true;
+            tag.root.scrollTop = 0;
+            opts.state.updated = true;
+          }
+          tag.changes = {
+            dataset: {
+              attributes: {},
+            },
+          };
+          return opts.controller.loadData()
+            .then((response1) => {
+              tag.dataset = response1.dataset;
+              tag.update();
+            });
+        });
+    }
+
+    // Create new change object from changes for upload
+    function getFormData() {
+      const changes = {
+        dataset: {},
+      };
+      const keys = Object.keys(tag.changes.dataset);
+      keys.filter(key => key !== 'attributes').forEach((key) => {
+        changes.dataset[key] = tag.changes.dataset[key].currentValue;
+      });
+      const attributes = [];
+      Object.keys(tag.changes.dataset.attributes).forEach((id) => {
+        const attributeKeys = Object.keys(tag.changes.dataset.attributes[id]);
+        attributeKeys.forEach((key) => {
+          attributes.push({
+            id: +id,
+            [key]: tag.changes.dataset.attributes[id][key].currentValue,
+          });
+        });
+      });
+      changes.dataset.attributes = attributes;
+      changes.dataset.id = tag.dataset.id;
+      return changes;
+    }
+    
+    tag.on('before-mount', () => {
+      tag.isLoading = true;
+    });
+    tag.on('mount', () => {
+      opts.controller.loadData()
+        .then((response) => {
+          tag.dataset = response.dataset;
+          tag.isLoading = false;
+          tag.update();
+        });
+    });
+  </script>
+</admin-edit>

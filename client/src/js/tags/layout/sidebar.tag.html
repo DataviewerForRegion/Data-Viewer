@@ -1,0 +1,306 @@
+/**
+ * Copyright (c) 2018 Sebastian Altenhuber, Patrick Humme
+ * 
+ * @file Sidebar for navigation
+ * @author Sebastian Altenhuber <sebastian.altenhuber@gmail.com>
+ * @author Patrick Humme <pathumme@gmail.com>
+ */
+<nav-sidebar>
+  <div class="o-drawer u-high o-drawer--left {o-drawer--visible: visible || sidebarLocked}" onmouseleave={ closeMenu }>
+    <div class="c-card">
+      <div class="c-card__body">
+        <nav class="c-nav c-nav--light">
+          <div each={ navLinks }>
+            <a href={ href } onclick={ navigate } class="nav--link">
+              <div class="c-nav__item {c-nav__item--active: state.subview === targetView}">
+                <i if={ icon } class="fa { icon }"></i>
+                { label }
+              </div>
+            </a>
+          </div>
+          <div style="margin-top: 3.5em;">
+            <div each={ userLinks }>
+              <a href={ href } onclick={ navigate } class="nav--link">
+                <div class="c-nav__item {c-nav__item--active: state.subview === targetView}">
+                  <i if={ icon } class="fa { icon }"></i>
+                  { label }
+                </div>
+              </a>
+            </div>
+          </div>
+          <div class="nav-links__bottom" style="position:absolute; bottom:0; height:3.5em;">
+            <label class="c-toggle">
+              <input type="checkbox" onchange={ lockSideBar }>
+              <div class="c-toggle__track">
+                <div class="c-toggle__handle"></div>
+              </div>
+              Lock Menu
+            </label>  
+          </div>
+        </nav>
+      </div>
+    </div>
+  </div>
+  <script type="es6">
+    const tag = this;
+    tag.navigate = navigate;
+    tag.state = opts.state;
+    tag.user = tag.state.user;
+    tag.closeMenu = closeMenu;
+    tag.lockSideBar = lockSideBar;
+
+    tag.visible = false;
+    tag.sidebarLocked = false;
+
+    tag.state.on('view::change', () => {
+      buildLinks(tag.state.view);
+      tag.navLinks = buildLinks(tag.state.view);
+      tag.update();
+    });
+
+    opts.controller.on('state::change', () => {
+      buildLinks(tag.state.view);
+      tag.navLinks = buildLinks(tag.state.view);
+      tag.update();
+    });
+
+    tag.state.on('subview::change', () => {
+      buildLinks(tag.state.view);
+      tag.update();
+    });
+    
+    if (opts.controller.selection) {
+      opts.controller.selection.on('change', () => {
+        buildLinks(tag.state.view);
+        tag.navLinks = buildLinks(tag.state.view);
+        tag.update();
+      });
+    }
+
+    if (tag.state.view === 'viewDataset') {
+      opts.controller.on('state::change', () => {
+        tag.navLinks = buildLinks(tag.state.view);
+        tag.update();
+      });
+      opts.controller.selection.on('change', () => {
+        tag.navLinks = buildLinks(tag.state.view);
+        tag.update();
+      });
+    }
+
+    tag.navigationLinks = {
+      index: {
+        urlPath: '',
+        links: [
+          {
+            label: 'Welcome',
+            urlPath: '',
+            title: 'Welcome',
+          },
+          {
+            label: 'Browse Datasets',
+            urlPath: 'browse',
+            title: 'Browse Datasets',
+          },
+          {
+            label: 'About',
+            urlPath: 'about',
+            title: 'About',
+          },
+        ],
+      },
+      viewDataset: {
+        urlPath: 'v',
+        links: [
+          {
+            targetView: 'overview',
+            label: 'Overview',
+            urlPath: '',
+          },
+          {
+            targetView: 'ms',
+            label: 'Map Select',
+            urlPath: 'ms',
+          },
+          {
+            targetView: 'mc',
+            label: 'Choropleth Map',
+            urlPath: 'mc',
+          },
+          {
+            targetView: 'bc',
+            label: 'Barchart',
+            urlPath: 'bc',
+          },
+          {
+            targetView: 'sp',
+            label: 'Scatterplot',
+            urlPath: 'sp',
+          },
+          {
+            targetView: 'dt',
+            label: 'Data Table',
+            urlPath: 'dt',
+          },
+          {
+            targetView: 'bp',
+            label: 'Boxplot',
+            urlPath: 'bp',
+          },
+          {
+            targetView: 'st',
+            label: 'Statistics',
+            urlPath: 'st',
+          },
+          {
+            type: 'nav',
+            target: '/browse',
+            label: 'Back to Index',
+            icon: 'fa-arrow-left',
+          },
+        ],
+      },
+      admin: {
+        urlPath: 'admin',
+        links: [
+          {
+            targetView: 'add',
+            label: 'Add Dataset',
+          },
+          {
+            targetView: 'manage',
+            label: 'Manage Datasets',
+          },
+          {
+            type: 'nav',
+            target: '/browse',
+            label: 'Back to Index',
+            icon: 'fa-arrow-left',
+          },
+        ],
+      },
+      login: {
+        urlPath: 'login',
+        links: [
+          {
+            type: 'nav',
+            target: '/browse',
+            label: 'Back to Index',
+            icon: 'fa-arrow-left',
+          },
+        ],
+      },
+    };
+
+    tag.state.on('sidebar::toggle', () => {
+      tag.visible = !tag.visible;
+      tag.update();
+    });
+
+    function closeMenu() {
+      tag.visible = false;
+      tag.update();
+    }
+
+    function lockSideBar(evt) {
+      if (evt.target.checked) {
+        tag.sidebarLocked = true;
+        tag.state.trigger('sidebar::lock');
+      } else {
+        tag.sidebarLocked = false;
+        tag.state.trigger('sidebar::unlock');
+      }
+    }
+
+    function buildLinks(view) {
+      const { links } = tag.navigationLinks[view];
+      if (view === 'viewDataset') {
+        links.forEach((link) => {
+          const currentLink = link;
+          if (link.type === 'nav') {
+            currentLink.href = currentLink.target;
+          } else {
+            currentLink.href = `/v/${opts.controller.datasetId}/${link.targetView}?${opts.controller.buildQueryString(opts.controller.getState(link.targetView))}`;
+          }
+        });
+      } else if (view === 'index') {
+        links.forEach((link) => {
+          const currentLink = link;
+          const { urlPath } = currentLink;
+          currentLink.href = `/${urlPath}`;
+        });
+      } else if (view === 'admin') {
+        links.forEach((link) => {
+          const currentLink = link;
+          if (currentLink.type === 'nav') {
+            currentLink.href = currentLink.target;
+          } else {
+            currentLink.href = `/admin/${link.targetView}`;
+          }
+        });
+      } else if (view === 'login') {
+        links.forEach((link) => {
+          const currentLink = link;
+          currentLink.href = currentLink.target;
+        });
+      }
+      buildUserLinks();
+      return links;
+    }
+
+    function buildUserLinks() {
+      if (tag.user.isLoggedIn) {
+        tag.userLinks = [
+          {
+            label: tag.user.username,
+            icon: 'fa-user',
+            href: '/admin/user',
+          },
+          {
+            label: 'Admin Panel',
+            href: '/admin',
+          },
+          {
+            label: 'Logout',
+            href: '/logout',
+          },
+          {
+            label: 'Help',
+            href: '/help',
+          },
+        ];
+      } else {
+        tag.userLinks = [
+          {
+            label: 'Login',
+            href: '/login',
+          },
+          {
+            label: 'Help',
+            href: '/help',
+          },
+        ];
+      }
+    }
+    function navigate(evt) {
+      // Prevent page reload
+      evt.preventDefault();
+      if (evt.item) {
+        if (evt.item.href === '/logout') {
+          opts.state.user.logout().then(() => {
+            opts.state.trigger('user::update');
+            buildUserLinks();
+            if (tag.state.view === 'admin') {
+              riot.route('/');
+            }
+          });
+        } else if (evt.item) {
+          riot.route(evt.item.href);
+        }
+      } else if (evt.target.parentElement.href) {
+        riot.route(evt.target.parentElement.href);
+      }
+      closeMenu();
+    }
+  </script>
+</nav-sidebar>

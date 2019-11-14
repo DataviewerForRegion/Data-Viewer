@@ -1,0 +1,602 @@
+/**
+ * Copyright (c) 2018 Sebastian Altenhuber, Patrick Humme
+ *
+ * @file Displays data in a tabular form - implemented as a riot tag
+ * @author Sebastian Altenhuber <sebastian.altenhuber@gmail.com>
+ * @author Patrick Humme <pathumme@gmail.com>
+ */
+<view-datatable>
+  <h3 class="c-heading c-heading--large">
+    { dataset.name } - Attributes
+  </h3>
+  <div class="o-grid o-grid--small-full o-grid--large-fit">
+    <div class="o-grid__cell">
+      <checkbox-dropdown-select ref="dropdown-select"/>
+    </div>
+    <div class="o-grid__cell">
+      <label class="c-label">
+        Filter:
+        <i class="fa fa-circle-o-notch fa-spin fa-fw c-icon" if={ searching }></i>
+        <div class="o-field">
+          <input class="c-field"
+            type="search"
+            onkeyup={ debounce }
+            value={ settings.searchTerm.value }>
+          </input>
+        </div>
+      </label>
+    </div>
+    <div class="o-grid__cell">
+      <label class="c-label">
+        Rows per Page:
+        <select class="c-field" 
+          onchange={ settingsEventHandler(settings.rowsPerPage) }>
+          <option value="5" 
+            selected={ settings.rowsPerPage.value === 5}>
+            5
+          </option>
+          <option value="10" 
+              selected={ settings.rowsPerPage.value === 10}>
+            10
+          </option>
+          <option value="25" 
+            selected={ settings.rowsPerPage.value === 25}>
+            25
+          </option>
+        </select>
+      </label>
+    </div>
+    <div class="o-grid__cell o-grid__cell--center">
+      <label>
+        Show only selected:
+        <input type="checkbox" 
+          onclick={ settingsEventHandler(settings.showSelectedOnly) }
+          checked={ settings.showSelectedOnly.value }>
+      </label>
+    </div>
+  </div>
+  <div ref="table" class="c-table c-table--striped c-table--clickable">
+    <div class="c-table__row c-table__row--heading" ref="tableHeading">
+    </div>
+  </div>
+  <span class="ruler" ref="ruler"></span>
+  <pagination 
+    pagenumeventhandler={ settingsEventHandler(settings.pageNumber) } 
+    pagenumber={ settings.pageNumber.value } 
+    numpages={ pageCount }
+  />
+  <script type="es6">
+    import * as d3Selection from 'd3-selection';
+    import * as d3Color from 'd3-color';
+    import * as d3Scale from 'd3-scale';
+    import * as d3Array from 'd3-array';
+    import * as d3Format from 'd3-format';
+
+    const tag = this;
+
+    tag.setRowsPerPage = setRowsPerPage;
+    tag.getDisplayRows = getDisplayRows;
+    tag.drawTable = drawTable;
+    tag.showSelected = showSelected;
+    tag.search = search;
+    tag.goToPage = goToPage;
+    tag.sort = sort;
+    tag.init = init;
+    tag.dataset = false;
+    tag.receivesUpdates = true;
+    tag.needsUpdate = false;
+    tag.initialized = false;
+    tag.resize = resize;
+    tag.updateChart = updateChart;
+    tag.settingsEventHandler = settingsEventHandler;
+
+    tag.selectedVars = {};
+    tag.dataArray = [];
+    tag.maxWidths = {};
+    tag.rowsPerPage = 10;
+    tag.measuredWidths = [];
+    tag.index = 0;
+    tag.searching = false;
+    tag.sortFunction = getSortFunction;
+
+    // Define tag settings, their defaults and url parameter keys to parse them from
+    tag.settings = {
+      // Page number the table is on
+      pageNumber: {
+        value: 1,
+        urlParamKey: 'p',
+        changeFn: goToPage,
+      },
+      // How many rows to display per page
+      rowsPerPage: {
+        value: 10,
+        urlParamKey: 'r',
+        changeFn: setRowsPerPage,
+      },
+      // Whether to sort ascending- or descendingly
+      sortDescending: {
+        value: false,
+        urlParamKey: 'desc',
+        type: 'boolean',
+      },
+      // The search term currently entered in the filter
+      searchTerm: {
+        value: undefined,
+        urlParamKey: 'q',
+        changeFn: search,
+      },
+      // Whether to show only selected rows
+      showSelectedOnly: {
+        value: false,
+        urlParamKey: 'selected',
+        type: 'boolean',
+        changeFn: showSelected,
+      },
+      // Key of the attribute the table should be sorted on
+      sortFieldId: {
+        value: undefined,
+        urlParamKey: 'sort',
+      },
+      selectedAttributes: {
+        selected: new Set(),
+        type: 'multiselect',
+        urlParamKey: 'cols',
+        get options() { return tag.attributes; },
+      },
+    };
+    tag.debounce = debounce(settingsEventHandler(tag.settings.searchTerm), 300);
+    tag.mixin('getData');
+    tag.mixin('parseState');
+
+    tag.on('selected::change', (options) => {
+      setSelected(options.selected);
+    });
+
+    function resize() {
+      drawTable(
+        getDisplayRows(),
+        tag.columns,
+        tag.dataset.selection,
+        tag.settings.sortFieldId.value,
+        tag.sortDescending,
+      );
+    }
+
+    function setSelected(selectedSet) {
+      const { selectedAttributes } = tag.settings;
+      selectedAttributes.selected = selectedSet;
+      const { selected, urlParamKey } = selectedAttributes;
+      const notInSelection = tag.attributes.filter(attribute => !selected.has(attribute)).length;
+      if (notInSelection > 1) {
+        const urlParamValue = [...selected].map(attribute => attribute.key).join(',');
+        opts.controller.setState(opts.subview, urlParamKey, urlParamValue);
+      } else {
+        opts.controller.setState(opts.subview, urlParamKey);
+      }
+      drawTable(getDisplayRows(), [...selected], tag.dataset.selection);
+    }
+
+    function init(dataset) {
+      const {
+        rowsPerPage,
+        searchTerm,
+        showSelectedOnly,
+        sortFieldId,
+      } = tag.settings;
+      tag.attributes = dataset.Attributes.all;
+      sortFieldId.value = dataset.Attributes.labels[0].key;
+      tag.parseState(tag.settings, undefined, 'urlParamKey');
+      tag.dataArray = dataset.json.features;
+      tag.targetArray = tag.dataArray;
+      tag.targetArray.sort((a, b) =>
+        tag.sortFunction()(a.properties[sortFieldId.value], b.properties[sortFieldId.value]));
+      tag.pageCount = Math.ceil(tag.dataArray.length / rowsPerPage.value);
+      const colorIdSet = new Set();
+      tag.dataset.json.features.forEach(feature => colorIdSet.add(feature.colorId));
+      tag.colorScheme = d3Scale.scaleOrdinal()
+        .domain([...colorIdSet])
+        .range(opts.controller.getState('global').cs.colors);
+      tag.selectedColumns = new Set();
+      tag.index = tag.settings.rowsPerPage.value * (tag.settings.pageNumber.value - 1);
+      if (tag.settings.selectedAttributes.selected.size < 1) {
+        tag.attributes.forEach(attribute => tag.settings.selectedAttributes.selected.add(attribute));
+      }
+      riot.mount(tag.refs['dropdown-select'].root, 'checkbox-dropdown-select', {
+        attributes: tag.attributes,
+        state: opts.state,
+        selected: tag.settings.selectedAttributes.selected,
+        parent: tag,
+      });
+      if (searchTerm.value) {
+        search(searchTerm.value, true);
+      }
+      drawTable(
+        getDisplayRows(),
+        [...tag.settings.selectedAttributes.selected],
+        tag.dataset.selection,
+        sortFieldId.value,
+        tag.sortDescending,
+      );
+      showSelected(showSelectedOnly.value, true);
+      tag.initialized = true;
+    }
+
+    /**
+     * Event handler for chart settings. Returns event handler for given settings object.
+     * Change corresponding settingsObject and call change function
+     * @param {Object} settingsObject - Object containing settings and change function
+     * @returns {Function}
+     */
+    function settingsEventHandler(settingsObject) {
+      // Return event handler for settingsObject
+      return function (evt) {
+        const settings = settingsObject;
+        let value;
+        // If the element is a select input element, get corresponding option and save it
+        if (settings.type === 'boolean') {
+          value = evt.target.checked;
+          settings.value = value;
+          value = value ? 1 : 0;
+          // Type number is needed for casting the value to a number
+        } else {
+          ({ value } = evt.target);
+        }
+        if (settings.changeFn) settings.changeFn(value);
+        opts.controller.setState(opts.subview, settings.urlParamKey, value);
+        if (value === '') opts.controller.removeState(opts.subview, settings.urlParamKey);
+      };
+    }
+    function updateChart() {
+      tag.colorScheme.range(opts.controller.getState('global').cs.colors);
+      const columns = [...tag.settings.selectedAttributes.selected];
+      drawTable(tag.view, columns, tag.dataset.selection);
+    }
+
+    function getSortFunction(sortDescending = tag.settings.sortDescending.value) {
+      return sortDescending
+        ? d3Array.descending
+        : d3Array.ascending;
+    }
+    /**
+     * Show selected elements event listener - Toggle display between selected and all features
+     * @param {Boolean} shoe - If true, show only selected
+     * @param {Boolean} initial - If true, do not go to page 1
+     *
+     */
+    function showSelected(show, initial) {
+      const { sortFieldId } = tag.settings;
+      if (show) {
+        tag.targetArray = tag.targetArray
+          .filter(feature => tag.dataset.selection.has(feature));
+      } else {
+        tag.targetArray = (tag.searchResult) ? tag.searchResult : tag.dataArray;
+      }
+      tag.targetArray.sort((a, b) =>
+        tag.sortFunction()(a.properties[sortFieldId.value], b.properties[sortFieldId.value]));
+      if (!initial) goToPage();
+      tag.pageCount = Math.ceil(tag.targetArray.length / tag.rowsPerPage);
+      tag.update();
+    }
+
+    /**
+     * Add or remove feature from selection
+     * @param {Object} d - Datum of the selected object
+     */
+    function toggleSelection(d) {
+      if (opts.controller.toggleSelection(d)) {
+        d3Selection.select(this)
+          .style('background-color', () => d3Color.rgb(tag.colorScheme(d.colorId)))
+          .style('color', d3Color.rgb('#ffffff'));
+      } else {
+        d3Selection.select(this)
+          .style('background-color', null)
+          .style('color', null);
+      }
+    }
+    /**
+     * Init function - Draw table
+     * @param {Array.<Object>} data - Table data
+     * @param {Array.<Object>} columns - Table columns
+     * @param {Set} selection - Set of selected features
+     * @param {String} sortFieldId - Key to sort table on
+     *
+     */
+    function drawTable(data, columns, selection, sortFieldId) {
+      // Create formatter for numbers
+      const format = d3Format.format(',.2s');
+      // Join header columns
+      let headerColumns = d3Selection.select(tag.refs.tableHeading)
+        .selectAll('span.c-table__cell')
+        .data(columns, d => d.id);
+      // Remove unneeded columns
+      headerColumns.exit().remove();
+      // Append new columns
+      const enterSelection = headerColumns
+        .enter()
+        .append('span')
+        .attr('class', d => `c-table__cell col-${d.id}`)
+        .on('click', sort)
+        .on('mouseover', mouseOverSortIcon)
+        .on('mouseout', mouseOutSortIcon)
+        .style('cursor', 'pointer')
+        .classed('c-table__cell', true)
+        .text(d => d.name);
+      // Merge old & new columns
+      headerColumns = headerColumns
+        .merge(headerColumns);
+      // Append sort icons to entering selection
+      enterSelection
+        .append('i')
+        .classed('fa', true)
+        .classed('fa-sort', d => d.key !== sortFieldId)
+        .classed('fa-sort-asc', d => (d.key === sortFieldId) && !tag.sortDescending)
+        .classed('fa-sort-desc', d => (d.key === sortFieldId) && tag.sortDescending);
+      // Data join for rows
+      let rows = d3Selection.select(tag.refs.table)
+        .selectAll('div.c-table__row')
+        .filter(':not(.c-table__row--heading)')
+        .data(data);
+      // Remove unneeded rows
+      rows.exit().remove();
+      // Append new rows from enter selection
+      rows = rows
+        .enter()
+        .append('div')
+        .merge(rows)
+        .classed('c-table__row', true)
+        .on('click', toggleSelection)
+        .style('background-color', null)
+        .style('color', d3Color.rgb('#000'));
+      // Color selected rows
+      rows
+        .filter(d => selection.has(d))
+        .style('background-color', d => d3Color.rgb(tag.colorScheme(d.colorId)))
+        .style('color', d3Color.rgb('#fff'));
+      // Join cells
+      const cells = rows
+        .selectAll('span.c-table__cell')
+        .data(d =>
+          columns
+            .map(column =>
+              ({
+                key: column.key,
+                value: d.properties[column.key],
+                isLabel: column.is_label,
+                active: column.is_active,
+                idx: column.id,
+              })));
+      // Remove unneeded cells
+      cells.exit().remove();
+      // Append new cells
+      cells
+        .enter()
+        .append('span')
+        .merge(cells)
+        // Column index used for setting width
+        .attr('class', d => `c-table__cell col-${d.idx}`)
+        // Special class for cells containing text
+        .classed('c-table__cell--text', d => d.isLabel)
+        // If value is a number, format it
+        .text((d) => {
+          let content;
+          if (d.isLabel) {
+            content = d.value;
+          } else {
+            content = format(d.value);
+          }
+          return content;
+        });
+      tag.minWidths = {};
+      d3Selection.select(tag.refs.table).selectAll('.c-table__cell')
+        // Calculate maximum widths for each column
+        .each(function (d) {
+          d3Selection.select(this).style('overflow', 'visible');
+          // Get width of elements by inserting them into invisible 'ruler' element
+          d3Selection.select(tag.refs.ruler).html(d3Selection.select(this).html());
+          const neededWidth = tag.refs.ruler.offsetWidth;
+          if (!tag.minWidths[d.idx]) {
+            tag.minWidths[d.idx] = neededWidth;
+          } else if (tag.minWidths[d.idx] < neededWidth) {
+            tag.minWidths[d.idx] = neededWidth;
+          }
+        });
+      // Set minimum widths for each column
+      Object.keys(tag.minWidths).forEach((key) => {
+        d3Selection.select(tag.refs.table).selectAll(`.col-${key}`)
+          .style('min-width', `${tag.minWidths[key]}px`);
+      });
+      tag.initialized = true;
+    }
+
+    /**
+     * Change sort icons on mouseover
+     * @param {Objecŧ} d - Datum of the targeted element
+     */
+    function mouseOverSortIcon(d) {
+      const {
+        sortFieldId,
+        sortDescending,
+      } = tag.settings;
+      // Check if this field is the active sort field
+      const fieldActive = d.key === sortFieldId.value;
+      d3Selection.select(this)
+        .select('i')
+        .classed('fa-sort-asc', () =>
+          (!fieldActive && !sortDescending.value) || (fieldActive && sortDescending.value))
+        .classed('fa-sort-desc', () => fieldActive && !sortDescending.value);
+    }
+    /**
+     * Change sort icons back on mouseout
+     * @param {Objecŧ} d - Datum of the targeted element
+     */
+    function mouseOutSortIcon(d) {
+      const {
+        sortFieldId,
+        sortDescending,
+      } = tag.settings;
+      // Check if this field is the active sort field
+      const fieldActive = d.key === sortFieldId.value;
+      d3Selection.select(this)
+        .select('i')
+        .classed('fa-sort', () => !fieldActive)
+        .classed('fa-sort-asc', () => fieldActive && !sortDescending.value)
+        .classed('fa-sort-desc', () => fieldActive && sortDescending.value);
+    }
+    /**
+     * Draw current view from target array
+     * @param {Array.<Object>} arr - Array containing all rows
+     * @param {number} index - Starting index
+     * @param {number} rowNumber - Number of rows to draw
+     * @returns {Array} Array containing rowNumber rows starting with index
+     *
+     */
+    function getDisplayRows(
+      arr = tag.targetArray,
+      index = tag.index,
+      numRows = tag.settings.rowsPerPage.value,
+    ) {
+      return arr.slice(index, index + numRows);
+    }
+    /**
+     * Sort event listener - Sort table on column click.
+     * @param {Event} event - Event
+     *
+     */
+    function sort(d) {
+      const {
+        sortFieldId,
+        sortDescending,
+      } = tag.settings;
+      // If table is already sorted on the field, reverse order
+      if (sortFieldId.value === d.key) {
+        sortDescending.value = !sortDescending.value;
+      // Elsem sort table on the field, ascending first
+      } else {
+        sortFieldId.value = d.key;
+        opts.controller.setState(opts.subview, sortFieldId.urlParamKey, sortFieldId.value);
+        tag.sortDescending = false;
+      }
+      opts.controller.setState(opts.subview, sortDescending.urlParamKey, tag.sortDescending ? 1 : 0);
+      d3Selection.select(tag.refs.table)
+        .selectAll('i')
+        // Change icons of table header to reflect current sort status
+        .classed('fa-sort', e => e.key !== sortFieldId.value)
+        .classed('fa-sort-asc', e => e.key === sortFieldId.value && !sortDescending.value)
+        .classed('fa-sort-desc', e => e.key === sortFieldId.value && sortDescending.value);
+      // Sort array by sort field id
+      tag.targetArray.sort((a, b) =>
+        tag.sortFunction()(a.properties[sortFieldId.value], b.properties[sortFieldId.value]));
+      // Go to page after 1
+      goToPage();
+    }
+
+    /**
+     * Set how many rows are displayed on one page
+     * @param {Event} evt - Input event
+     *
+     */
+    function setRowsPerPage(numPages) {
+      const { pageNumber } = tag.settings;
+      // Cast to integer
+      tag.rowsPerPage = +numPages;
+      // Recalculate total page count & current page number
+      tag.pageCount = Math.ceil(tag.targetArray.length / tag.rowsPerPage);
+      pageNumber.value = Math.ceil(tag.index / tag.rowsPerPage);
+      // Page number cannot be smaller than 1
+      if (pageNumber.value < 1) {
+        pageNumber.value = 1;
+      }
+      tag.index = (pageNumber.value - 1) * tag.rowsPerPage;
+      // Redraw table
+      const columns = [...tag.settings.selectedAttributes.selected];
+      drawTable(getDisplayRows(), columns, tag.dataset.selection);
+    }
+
+    /**
+     * Search for a term and display only matching rows
+     * @param {String|Number} term - Onkeyup event
+     * @param {Boolean} initial - If true, tag is being initialized
+     *
+     */
+    function search(searchTerm, initial) {
+      return (function () {
+        // Create regex
+        const term = new RegExp(searchTerm, 'i');
+        // Clear search result
+        tag.searchResult = [];
+        // If search term is empty, make whole data array target array
+        if (searchTerm === '') {
+          tag.targetArray = tag.dataArray;
+        } else {
+          tag.targetArray = tag.searchResult;
+          // Test all attributes for the search term
+          tag.dataArray.forEach((feature) => {
+            // Check if any attribute matches the search term
+            Object.values(feature.properties).some((value) => {
+              // If regex matches, add feature to search result array
+              let matches = false;
+              if (value && term.test(value)) {
+                tag.searchResult.push(feature);
+                matches = true;
+              }
+              return matches;
+            });
+          });
+        }
+        // Go to page 1
+        if (!initial) goToPage();
+        // Recalculate page count & redraw table
+        tag.pageCount = Math.ceil(tag.targetArray.length / tag.rowsPerPage);
+        const columns = [...tag.settings.selectedAttributes.selected];
+        drawTable(getDisplayRows(), columns, tag.dataset.selection);
+        // Remove loading spinner
+        tag.update({ searching: false });
+      }());
+    }
+
+    /**
+     * Debounce function - Execute function only once in specified wait time.
+     * @param {function} func - Function to execute
+     * @param {number} wait - Wait time in milliseconds
+     *
+     */
+    function debounce(func, wait) {
+      // Closure to preserve timeout
+      let timeout;
+      return function (...args) {
+        tag.searching = true;
+        const context = this;
+        // const args = arguments;
+        const later = function () {
+          tag.update();
+          timeout = null;
+          func.apply(context, args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+      };
+    }
+
+    /**
+     * Go to page with number
+     * @param {Event} evt - Click event
+     */
+    function goToPage(number) {
+      const { pageNumber } = tag.settings;
+      // If evt is undefined, go to page 1 and set state in controller
+      if (!number) {
+        pageNumber.value = 1;
+        tag.index = 0;
+        opts.controller.setState(opts.subview, pageNumber.urlParamKey, pageNumber.value);
+      } else {
+        // Get page number from event target
+        const num = +number;
+        pageNumber.value = num;
+        tag.index = (pageNumber.value - 1) * tag.rowsPerPage;
+      }
+      // Redraw table
+      const columns = [...tag.settings.selectedAttributes.selected];
+      drawTable(getDisplayRows(), columns, tag.dataset.selection);
+    }
+  </script>
+</view-datatable>

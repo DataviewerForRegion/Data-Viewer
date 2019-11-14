@@ -1,0 +1,86 @@
+/**
+ * Copyright (c) 2018 Sebastian Altenhuber, Patrick Humme
+ * 
+ * @file Pagination component
+ * @author Sebastian Altenhuber <sebastian.altenhuber@gmail.com>
+ * @author Patrick Humme <pathumme@gmail.com>
+ */
+<pagination>
+  <div class="c-pagination">
+    <div class="c-pagination__controls c-pagination__controls--backward">
+      <button class="c-pagination__control" 
+        disabled={ pageNumber === 1} 
+        onclick={ pageNumEventHandler } 
+        value="1">
+        «
+      </button>
+      <button class="c-pagination__control" 
+        disabled={ pageNumber === 1} 
+        onclick={ pageNumEventHandler } 
+        value={ pageNumber - 1}>
+        ‹
+      </button>
+    </div>
+    <span class="c-pagination__ellipsis" 
+      style="visibility: { (pageNumber <= 2 || numPages <= 3) ? "hidden" : ""};">
+      …
+    </span>
+    <div class="c-pagination__controls">
+      <button each={ page in pagesVisible } 
+        class="c-pagination__page {c-pagination__page--current: page === pageNumber}" 
+        value ={ page } 
+        onclick={ pageNumEventHandler }>
+        { page }
+      </button>
+    </div>
+    <span class="c-pagination__ellipsis" 
+      style="visibility: { (pageNumber >= numPages - 1 || numPages <= 3) ? "hidden" : "" }">
+      …
+    </span>
+    <div class="c-pagination__controls c-pagination__controls--forward">
+      <button class="c-pagination__control" 
+        disabled={ pageNumber === numPages || numPages === 1 } 
+        onclick={ pageNumEventHandler } 
+        value={ pageNumber + 1 }>
+        ›
+      </button>
+      <button class="c-pagination__control" 
+        disabled={ pageNumber === numPages || numPages === 1 } 
+        onclick={ pageNumEventHandler } 
+        value={ numPages }>
+        »
+      </button>
+    </div>
+  </div>
+  <script type="es6">
+    const tag = this;
+    tag.on('update', () => {
+      tag.pageNumber = +opts.pagenumber;
+      tag.pageNumEventHandler = opts.pagenumeventhandler;
+      tag.numPages = +opts.numpages;
+      tag.pagesVisible = opts.pagesvisible;
+      updatePagesVisible();
+    });
+    /**
+     * Update visible pages for pagination
+     * @param {Number} numPages - Total count of pages
+     * @param {Number} pageNumber - Current page number
+     */
+    function updatePagesVisible(numPages = tag.numPages, pageNumber = tag.pageNumber) {
+      let pages = [];
+      for (let i = 1; i <= numPages; i += 1) {
+        pages.push(i);
+      }
+      if (pages.length > 2) {
+        if (tag.pageNumber === 1) {
+          pages = pages.slice(0, 3);
+        } else if (tag.pageNumber === numPages) {
+          pages = pages.slice(-3);
+        } else {
+          pages = pages.slice(pageNumber - 2, pageNumber + 1);
+        }
+      }
+      tag.pagesVisible = pages;
+    }
+  </script>
+</pagination>

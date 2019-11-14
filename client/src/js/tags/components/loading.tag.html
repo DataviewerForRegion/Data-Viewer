@@ -1,0 +1,21 @@
+/**
+ * Copyright (c) 2018 Sebastian Altenhuber, Patrick Humme
+ * 
+ * @file Loading indicator
+ * @author Sebastian Altenhuber <sebastian.altenhuber@gmail.com>
+ * @author Patrick Humme <pathumme@gmail.com>
+ */
+<loading>
+  <p>Please wait while loading data<p>
+  <div class="c-progress">
+    <div id="progress_bar" class="c-progress__bar"></div>
+  </div>
+  <script type="es6">
+    const tag = this;
+    tag.on('mount', () => {
+    });
+    opts.controller.on('progress::update', (progress) => {
+      tag.progress_bar.setAttribute('style', `width:${progress.progress * 100}%`);
+    });
+  </script>
+</loading>

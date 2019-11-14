@@ -1,0 +1,51 @@
+/**
+ * Copyright (c) 2018 Sebastian Altenhuber, Patrick Humme
+ * 
+ * @file Displays an overview of the dataset's attributes, their names and their types
+ * @author Sebastian Altenhuber
+ * @author Patrick Humme
+ */
+<view-overview>
+  <h3 class="c-heading c-heading--large">{ dataset.name } - Overview</h3>
+  <ul class="c-list c-list--unstyled">
+    <li class="c-list__item">Description: { dataset.description }</li>
+    <li class="c-list__item">Projection: { dataset.projection }</li>
+    <li class="c-list__item">URL: { dataset.url }</li>
+  </ul>
+  <h4 class="c-heading c-heading--medium">Attributes</h4>
+  <!-- Display attributes in a tabular format -->
+  <table class="c-table c-table--striped">
+    <!-- Table heading -->
+    <thead class="c-table__head">
+    <tr class="c-table__row c-table__row--heading">
+      <th class="c-table__cell">ID</th>
+      <th class="c-table__cell">Name</th>
+      <th class="c-table__cell">Description</th>
+      <th class="c-table__cell">Type</th>
+    </tr>
+    </thead>
+    <!-- Table body -->
+    <tbody class="c-table__body">
+      <tr each={ attributes } class="c-table__row">
+        <td class="c-table__cell">{ id }</td>
+        <td class="c-table__cell">{ name }</td>
+        <td class="c-table__cell">{ description }</td>
+        <td class="c-table__cell">{ type }</td>
+      </tr>
+    </tbody>
+  </table>  
+  <script type="es6">
+    const tag = this;
+    tag.dataset = opts.data || {};
+    // On tag update, reload data
+    tag.on('update', () => {
+      if (opts.dataset) {
+        tag.attributes = opts.dataset.Attributes.all;
+        tag.dataset = opts.dataset;
+      }
+    });
+    opts.state.on('toggle_sidebar', () => {
+      tag.update();
+    });
+  </script>
+</view-overview>

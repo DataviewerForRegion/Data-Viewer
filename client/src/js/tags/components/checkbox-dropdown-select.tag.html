@@ -1,0 +1,128 @@
+/**
+ * Copyright (c) 2018 Sebastian Altenhuber, Patrick Humme
+ * 
+ * @file Drop-down list with selectable items
+ * @author Sebastian Altenhuber <sebastian.altenhuber@gmail.com>
+ * @author Patrick Humme <pathumme@gmail.com>
+ */
+<checkbox-dropdown-select>
+  <label class="c-label o-form-element" onclick={ openDropdown }>
+      Select attributes:
+      <div class="c-field" ref="fieldspec">
+        { fieldString }
+      </div>
+  </label>
+  <div class="o-panel-container">
+    <div id="filter--fieldselect" 
+      class="filter--fieldselect o-panel u-high" 
+      ref="fieldselect">  
+      <div class="selection--control">
+        <span onclick={ selectAll }>Select All</span> - <span onclick={ selectNone }>Select None</span>
+      </div>
+      <div each={ attribute in attributes }>
+        <label class="c-field c-field--choice" onchange={ selectField }>
+          <input type="checkbox" value={ attribute.key } 
+            checked={ selected.has(attribute) }>
+          { attribute.name }
+        </label>
+      </div>
+    </div>
+  </div>
+  <script type="es6">
+    const tag = this;
+
+    tag.selectAll = selectAll;
+    tag.selectNone = selectNone;
+    tag.selectField = selectField;
+    tag.getSelectedItems = getSelectedItems;
+    tag.openDropdown = openDropdown;
+    tag.selected = new Set();
+    tag.attributes = opts.attributes;
+
+    tag.on('mount', () => {
+      if ('selected' in opts) {
+        tag.selected = opts.selected;
+        opts.state.on('change::subview', (subview) => {
+          if (subview !== 'ms') {
+            document.removeEventListener('click', close);
+            tag.refs.fieldselect.style.display = null;
+          }
+        });
+        updateFieldString();
+      }
+    });
+
+
+    function selectAll() {
+      tag.attributes.forEach((attribute) => {
+        tag.selected.add(attribute);
+      });
+      updateFieldString();
+      opts.parent.trigger('selected::change', { selected: tag.selected });
+    }
+
+    function updateFieldString() {
+      // const length = tag.selected.length;
+      const { length } = [...tag.selected];
+      let fieldString;
+      if (length === 0) {
+        fieldString = 'None';
+      } else if (length === 1) {
+        let [selected] = [...tag.selected];
+        tag.attributes.forEach((attribute) => {
+          if (attribute.key === selected) {
+            selected = attribute;
+          }
+        });
+        fieldString = `${selected.name}`;
+      } else if (length > 1) {
+        fieldString = `[${length} attributes selected]`;
+      }
+      tag.update({ fieldString });
+    }
+    function openDropdown(evt) {
+      tag.refs.fieldselect.style.display = 'block';
+      document.addEventListener('click', close);
+      evt.stopPropagation();
+    }
+    function selectNone() {
+      tag.selected.clear();
+      opts.parent.trigger('selected::change', { selected: tag.selected });
+      updateFieldString();
+    }
+    function selectField(evt) {
+      const { attribute } = evt.item;
+      if (tag.selected.has(attribute)) {
+        tag.selected.delete(attribute);
+      } else {
+        tag.selected.add(attribute);
+      }
+      opts.parent.trigger('selected::change', { selected: tag.selected });
+      updateFieldString();
+    }
+    function getSelectedItems() {
+      return tag.selected;
+    }
+    function close(evt) {
+      if (!insideContainer(evt.target, 'filter--fieldselect')) {
+        document.removeEventListener('click', close);
+        tag.refs.fieldselect.style.display = null;
+      }
+    }
+    /**
+     * Check if element is child of element with id
+     * @param {HTMLElement} element - Clicked HTML element
+     * @param {string} id - Id of parent container to check for
+     *
+     */
+    function insideContainer(element, id) {
+      while (element) {
+        if (element.id === id) return true;
+        /* eslint-disable no-param-reassign */
+        element = element.parentElement;
+        /* eslint-enable no-param-reassign */
+      }
+      return false;
+    }
+  </script>
+</checkbox-dropdown-select>

@@ -1,0 +1,106 @@
+/**
+ * Copyright (c) 2018 Sebastian Altenhuber, Patrick Humme
+ * 
+ * @file Admin section - Add (upload) a dataset
+ * @author Sebastian Altenhuber <sebastian.altenhuber@gmail.com>
+ * @author Patrick Humme <pathumme@gmail.com>
+ */
+<admin-add>
+  <h2 class="c-heading c-heading--medium">Add Dataset</h2>
+  <p class="c-paragraph">
+    Please select the file you want to upload and enter the source file projection. Valid file formats are: 
+  </p>
+  <ul class="c-list"> 
+    <li class="c-list__item">Shapefile (packed in a ZIP file)</li>
+    <li class="c-list__item">GeoJSON</li>
+  </ul>
+  <p class="c-paragraph">
+    After successful upload and conversion you will be redirected to page where you can edit the metadata of the uploaded dataset.
+  </p>
+  <div id="error"></div>
+  <form enctype="multipart/form-data" ref="add_dataset">
+    <fieldset class="o-fieldset">
+      <div class="o-grid o-grid--wrap">
+        <div class="o-grid__cell o-grid__cell--width-100">
+          <div class="o-form-element">
+            <label class="c-label" for="uploadedFile">File</label>
+            <input class="c-field" type="file" name="uploadedFile" ref="uploadedFile">
+          </div>
+        </div>
+        <div class="o-grid__cell o-grid__cell--width-100">
+          <div class="o-fieldset c-list c-list--inline c-list--unstyled">
+            <legend class="o-fieldset__legend">Input file type</legend>
+            <label class="c-field c-field--choice">
+              <input type="radio" id="geojson" name="format" value="GeoJSON">
+              GeoJSON
+            </label>
+            <label class="c-field c-field--choice">
+              <input type="radio" id="shapefile" name="format" value="shapefile" checked>
+              Shapefile
+            </label>
+          </div>
+        </div>
+        <div class="o-grid__cell o-grid__cell--width-100">
+          <label class="c-label o-form-element">
+            Projection:
+            <input class="c-field c-field--label" type="text" name="projection">
+          </label>
+        </div>
+        <div class="o-grid__cell">
+          <button class="c-button c-button--success c-button--block" name="submit" onclick={ submit }>Upload</button>
+          <div class="c-progress" if={ uploading }>
+            <div ref="progress" class="c-progress__bar c-progress__bar--success c-progress__bar--info" style="width:0%;"></div>
+          </div>
+          <div if={ errorOccurred }>
+            <span class="c-badge c-badge--error">Error:</span> { errorMessage }
+          </div>
+        </div>
+      </div>
+    </fieldset>
+  </form>
+  <script type="es6">
+    const tag = this;
+    tag.submit = submit;
+    let errorContainer;
+
+    function onProgress(percentComplete) {
+      tag.refs.progress.style.width = percentComplete * 100;
+    }
+
+    function submit(evt) {
+      // Prevent default POST request
+      evt.preventDefault();
+      // Show progress bar
+      tag.uploading = true;
+      tag.update();
+      if (tag.refs.uploadedFile.value !== '') {
+        const formData = new FormData(tag.refs.add_dataset);
+        opts.controller.uploadData(formData, onProgress)
+          .then((json) => {
+            if (json.status === 'error') {
+              tag.errorOccurred = true;
+              if (json.error === 'WrongFileType') {
+                tag.errorMessage = 'The file you uploaded does not match the selected input file type. If using a shapefile, please upload a zip containing all files belonging to the shapefile !';
+              } else if (json.error === 'UnableToOpen') {
+                tag.errorMessage = 'Ogr2Ogr was not able to open the uploaded file. Please check the file you uploaded and the projection you entered!';
+              }
+              tag.uploading = false;
+              tag.update();
+            } else {
+              riot.route(`/admin/edit/${json.id}`);
+            }
+          })
+          .catch((error) => {
+            console.log(error);
+          });
+      } else {
+        if (errorContainer) tag.error.removeChild(errorContainer);
+        errorContainer = document.createElement('div');
+        errorContainer.setAttribute('class', 'c-alert c-alert--error');
+        const errornode = document.createTextNode('You have to select a file to proceed!');
+        errorContainer.appendChild(errornode);
+        tag.error.appendChild(errorContainer);
+      }
+    }
+  </script>
+</admin-add>

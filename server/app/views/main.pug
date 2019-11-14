@@ -1,0 +1,13 @@
+doctype html
+html 
+  head
+    title REGION Dataviewer
+    link(rel="stylesheet" href="/static/style.css")
+    meta(charset="utf-8")
+    meta(name="description" content="REGION Journal Dataviewer")
+    meta(name="keywords" content="Geodata, Visualization, REGION journal")
+  body
+    app
+    script(type="text/javascript").
+      var initialData = !{initData}
+    script(src="/static/bundle.js" type="text/javascript")

@@ -1,0 +1,83 @@
+/**
+ * Copyright (c) 2018 Sebastian Altenhuber, Patrick Humme
+ * 
+ * @file Contains help for the Dataviewer
+ * @author Sebastian Altenhuber <sebastian.altenhuber@gmail.com>
+ * @author Patrick Humme <pathumme@gmail.com>
+ */
+<index-help>
+	<h3 class="c-heading">Help / Documentation</h3>
+	<ol class="c-list c-list--ordered">
+		<li class="c-list__item">Introduction</li>
+		<li class="c-list__item">Overview</li>
+		<li class="c-list__item">Browsing Available Datasets</li>
+		<li class="c-list__item">Viewing a Dataset
+			<ol class="c-list c-list--ordered">	
+				<li class="c-list__item">Overview</li>
+				<li class="c-list__item">Map Select View</li>
+				<li class="c-list__item">Choropleth Map View</li>
+				<li class="c-list__item">Barchart</li>
+				<li class="c-list__item">Scatterplot</li>
+				<li class="c-list__item">Data Table</li>
+				<li class="c-list__item">Boxplot</li>
+				<li class="c-list__item">Statistics</li>
+				<li class="c-list__item">Correlations</li>
+			</ol>
+		</li>
+	</ol>
+	<hr>
+	<ol class="c-list c-list--ordered">
+		<li class="c-list__item">
+			Introduction
+			<p class="c-paragraph">Welcome to the REGION Dataviewer help / documentation. In this document, you can find descriptions the functionality of this application.</p>
+		</li>
+		<li class="c-list__item">
+			Overview
+			<p class="c-paragraph">For the end-user, the application features two essential views:
+			</p>
+		</li>
+		<li class="c-list__item">
+			Browsing Available Datasets
+			<p class="c-paragraph">In this view, available datasets can be browsed and sorted according to various criteria. Clicking on the respective dataset leads to the detailed ("dataset") view for the respective dataset.</p>
+		</li>
+
+		<li class="c-list__item">
+			Viewing a Dataset
+			<p class="c-paragraph">This view is the main view of the application. Here, detailed visualizations and other types of data display can be accessed.</p>
+		</li>
+		<ol class="c-list c-list--ordered">
+			<li class="c-list__item">
+			Overview
+				<p class="c-paragraph">The start page of the visualization view. Meta-data about the dataset and its' attributes is displayed.</p>
+			</li>
+			<li class="c-list__item">
+			Map Select View
+			<p class="c-paragraph">A map view which can be used to select certain features on the map. In addition to selection by click, features can be selected via various types of filters by clicking on the "Filter" bar on top of the page. In the top right corner of the map, the base map displayed can be changed. Furthermore, the style of features, labels and tooltips can be changed freely by hovering over the Cog (<i class="fa fa-cog"></i>) icon. Colors can be either selected to be single-colored or multi-colored in which case the color schemes of Cynthia Brewer's Colorbrewer (<a class="c-link" href="http://colorbrewer2.org" target="__blank">http://colorbrewer2.org</a>) are available to chose from. On selection of a multi-color scheme, all other views are updated to reflect the chosen color scheme, since they are to match the features' color on the map.
+			</li>
+			<li class="c-list__item">
+			Choropleth Map View
+				<p class="c-paragraph">A map view, which represents a classic choropleth map. The attribute to be visualized, the number of categories  and the color scheme to be used as well as the type of scale used for categorization can be selected freely. The selection of color schemes are once again based on Cynthia Brewer's Colorbrewer (<a class="c-link" href="http://colorbrewer2.org" target="__blank">http://colorbrewer2.org</a>).
+			</li>
+			<li class="c-list__item">
+			Barchart
+			<p class="c-paragraph">A classic bar chart. The attribute to be visualized can be selected and the bars can be sorted accordingly. Also, the view can be switched between the whole dataset and the current selection. The bars' height will adjust to the current label size when a new label attribute is selected but can be customized afterwards. By hovering over the cog (<i class="fa fa-cog"></i>) icon, colors of the bars and labels as well as the attribute to label the y-axis can be selected.</p>
+			</li>
+			<li class="c-list__item">
+			Scatterplot
+				<p class="c-paragraph">An animated scatter plot. Variable for x- and y-axis can be selected at the top of the page. By hovering over the cog (<i class="fa fa-cog"></i>) icon, labels, grids and regression line can be toggled on and of. Also, multi-color, label- and tooltip attributes can be changed. The visualization features two types of interaction: Panning & zooming and rectangular select. While in rectangular select, a rectangular area can be drawn in the plot to visually select features. The buttons on the right of the plot can be used to reset zoom and selection as well as to add visually selected dots to the overall selection.</p>
+			</li>
+			<li class="c-list__item">
+			Data Table
+				<p class="c-paragraph">This view displays features' attributes in tabular form. Features can be sorted in an ascending or descending manner on any of the attributes by clicking on the feature's column. Furthermore, columns can be displayed or hidden to create a more compact view. A full-text search filter can be used to search for names of the attributes. Selected attributes are colored according to the color scheme selected in the map select view. By clicking on a feature it can be selected and deselected.</p>
+			</li>
+			<li class="c-list__item">
+			Boxplot
+				<p class="c-paragraph">An implementation of a boxplot visualization, which can be useful to see a visual representation of quartiles and median. The inter-quartile range is pre-configured to be 1.5. To display a boxplot, an attribute first has to be selected using the drop-down select menu. Labels for outliers can be hidden or displayed by clicking the respective switch. Also, the attribute which is used to label outliers can be selected using the drop-down select element.</p>
+			</li>
+			<li class="c-list__item">
+			Statistics
+				<p class="c-paragraph">This view features two types of visualizations: Descriptive Statistics and Correlation. The descriptive statistics tab cointains standard statistical metrics as well as a histogram displaying frequency, for which the attribute to visualize can be chosen. The correlation tab features Pearson's correlation coefficient for all attributes. The attribute for which the correlation is to be examined can be chosen via drop-down select.</p>
+			</li>
+		</ol>
+	</ol>
+</index-help>

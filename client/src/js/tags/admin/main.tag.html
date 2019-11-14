@@ -1,0 +1,43 @@
+/**
+ * Copyright (c) 2018 Sebastian Altenhuber, Patrick Humme
+ * 
+ * @file Admin section - main page
+ * @author Sebastian Altenhuber <sebastian.altenhuber@gmail.com>
+ * @author Patrick Humme <pathumme@gmail.com>
+ */
+<admin-main>
+  <div id="page" class="o-grid o-panel o-panel--nav-top">
+    <div class="o-grid__cell--width-15 o-grid__cell--hidden o-grid__cell--visible@large o-panel-container">
+      <admin-sidebar controller={ opts.controller } state={ opts.state } />
+    </div>
+    <main class="o-grid__cell o-grid__cell--width-85@large o-panel-container">
+      <div class="o-grid">
+        <admin-content class="o-grid__cell o-panel" data={ opts.data } state={ opts.state } controller={ opts.controller } />
+      </div>
+    </main>
+  </div>
+  <script type="es6">
+    const tag = this;
+    tag.mountSubview = mountSubview;
+    tag.on('mount', () => {
+      if (!opts.state.user.isLoggedIn) {
+        opts.controller.view = 'login';
+        riot.route('/login');
+      } else if (opts.state.subview) {
+        tag.subview = opts.state.subview;
+        riot.mount('admin-content', `admin-${tag.subview}`, { state: opts.state, controller: opts.controller });
+      }
+    });
+
+    tag.on('update', () => {
+      if (tag.subview !== opts.state.subview) {
+        tag.subview = opts.state.subview;
+        riot.mount('admin-content', `admin-${tag.subview}`, { state: opts.state, controller: opts.controller });
+      }
+    });
+
+    function mountSubview(subview = 'content') {
+      riot.mount('admin-content', `admin-${subview}`, { state: opts.state, controller: opts.controller });
+    }
+  </script>
+</admin-main>

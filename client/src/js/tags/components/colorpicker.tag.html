@@ -1,0 +1,295 @@
+/**
+ * Copyright (c) 2018 Sebastian Altenhuber, Patrick Humme
+ * 
+ * @file Color picker for categorical and sequential color schemes
+ * @author Sebastian Altenhuber <sebastian.altenhuber@gmail.com>
+ * @author Patrick Humme <pathumme@gmail.com>
+ */
+<colorpicker>
+    <div class="o-grid">
+      <div class="o-grid__cell o-grid__cell--width-95" class="colordisplay--container" style="padding:0;">
+        <div class="c-field">
+          <div ref="display" onclick={ open } class="colordisplay--display">
+          </div>
+        </div>
+        <div class="c-field colordisplay--overlay" ref="overlay">
+          <div ref="categoricalcolors">
+          </div>
+        </div>
+      </div>
+      <div class="o-grid__cell o-grid__cell--width-5" style="padding:0;">
+        <i class="fa fa-exchange fa-2x fa-fw icon--invert {icon--invert__active: inverted}" 
+          if={ schemeType === "sequential" } 
+          onclick={ invertColors }>
+        </i>
+      </div>
+    </div>
+  </div>
+  <script type='es6'>
+    import * as d3Selection from 'd3-selection';
+    import * as d3Color from 'd3-color';
+
+    const colorSchemes = require('../../utils/colorschemes');
+    
+    const tag = this;
+
+    tag.select = select;
+    tag.resize = resize;
+    tag.open = open;
+    tag.setColorScheme = setColorScheme;
+    tag.invertColors = invertColors;
+
+    opts.state.on('window::resize', () => {
+      resize();
+    });
+
+    tag.initialized = false;
+    tag.mixin('isChildOf');
+
+    tag.on('mount', () => {
+      tag.colorSchemes = [];
+      // Default scheme type is sequential.
+      tag.schemeType = opts.schemetype || 'sequential';
+      tag.availableSchemes = colorSchemes;
+
+      // Get sequential or categorical color schemes depending on options.
+      if (tag.schemeType === 'sequential') {
+        // Default is not inverted
+        tag.inverted = opts.inverted.value || false;
+        const { sequential } = tag.availableSchemes;
+
+        Object.keys(sequential).forEach((key) => {
+          tag.colorSchemes.push({ key, interpolateFn: sequential[key] });
+        });
+      } else {
+        tag.selected = opts.controller.getState('global').cs;
+        const { categorical } = tag.availableSchemes;
+
+        Object.keys(categorical).forEach((key) => {
+          tag.colorSchemes.push({ key, colorArray: categorical[key] });
+        });
+        if (!tag.initialized) populate(tag.colorSchemes, false);
+      }
+      tag.root.addEventListener('resize', resize);
+    });
+
+    // Remove close event listener from page if not in view
+    opts.state.on('change::subview', (subview) => {
+      if (subview !== opts.subview) {
+        document.removeEventListener('click', close);
+        tag.root.removeEventListener('resize', resize);
+      }
+    });
+
+    // Set currently selected color scheme when it changes
+    opts.controller.on('colorscheme::changed', () => {
+      if (tag.schemeType === 'categorical') {
+        setColorScheme(opts.controller.getState('global').cs.key);
+      }
+    });
+
+    tag.on('update', () => {
+      // On update, populate color picker if not already initialized
+      // (selected colorscheme becomes available on update)
+      if (tag.schemeType === 'sequential') {
+        opts.selected = opts.selectedscheme;
+        if (!tag.initialized && tag.refs.display.clientWidth > 0 && opts.selected) {
+          const { clientWidth, clientHeight } = tag.refs.display;
+          tag.inverted = opts.inverted.value;
+          populate(tag.colorSchemes, true, clientWidth, clientHeight, opts.selectedscheme);
+        }
+      }
+    });
+
+    tag.on('unmount', () => {
+      // Remove close event listener on unmounting of the tag
+      document.removeEventListener('click', close);
+    });
+
+    /**
+     * On window resize, remove all canvas elements and repopulate the color picker with new dimensions
+     *
+     */
+    function resize() {
+      if (tag.initialized) {
+        d3Selection.select(tag.refs.display).selectAll('canvas').remove();
+        d3Selection.select(tag.refs.overlay).selectAll('canvas').remove();
+        const { clientWidth, clientHeight } = tag.refs.display;
+        populate(tag.colorSchemes, true, clientWidth, clientHeight, opts.selectedscheme);
+      }
+    }
+    /**
+     * On color scheme selection, add color scheme to display
+     *
+     */
+    function select(d) {
+      tag.refs.overlay.style.display = 'none';
+      while (tag.refs.display.firstChild) {
+        tag.refs.display.firstChild.remove();
+      }
+      const colorSchemeObj = d;
+      // Copy canvas element to display box
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+      canvas.setAttribute('width', this.width);
+      canvas.setAttribute('height', this.height);
+      context.drawImage(this, 0, 0);
+      tag.refs.display.append(canvas);
+      if (tag.inverted) {
+        d3Selection.select(tag.refs.display)
+          .select('canvas')
+          .style('transform', 'scale(-1, 1)');
+      }
+      opts.setColorScheme(colorSchemeObj);
+    }
+    /**
+     * Invert color schemes on click (used for sequential colors)
+     *
+     */
+    function invertColors() {
+      if (tag.inverted) {
+        d3Selection.select(tag.root).selectAll('canvas')
+          .style('transform', null);
+      } else {
+        d3Selection.select(tag.root).selectAll('canvas')
+          .style('transform', 'scale(-1, 1)');
+      }
+      tag.inverted = !tag.inverted;
+      tag.parent.trigger('color::invert');
+    }
+    /**
+     * Populate color picker select field and drop-down
+     * @param {Array} schemes - Color schemes to populate with
+     * @param {Boolean} sequential - Whether this color picker displays sequential or categorical colors
+     * @param {Number} width - Width of the color picker element
+     * @param {Number} height - Height of the color picker element
+     * @param {String} selected - Key of the current (selected) color scheme
+     */
+    function populate(schemes, sequential, width, height, selected) {
+      tag.initialized = true;
+      // Case when colorschemes should be sequential
+      if (sequential) {
+        schemes.forEach((schemeObj) => {
+          // Create canvas element displaying the color gradient
+          const canvas = document.createElement('canvas');
+          canvas.setAttribute('width', width);
+          canvas.setAttribute('height', height);
+          const context = canvas.getContext('2d');
+          const image = context.createImageData(width, height);
+          let y = 0;
+          let i = -1;
+          // Fill each pixel of width with color according to color function.
+          for (let x = 0, c; x < width; x += 1) {
+            c = d3Color.rgb(schemeObj.interpolateFn(x / width));
+            i += 1;
+            image.data[i] = c.r;
+            i += 1;
+            image.data[i] = c.g;
+            i += 1;
+            image.data[i] = c.b;
+            i += 1;
+            image.data[i] = 255;
+          }
+          const length = i + 1;
+          while (y < height * length) {
+            i += 1;
+            image.data[i] = image.data[i % length];
+            y += 1;
+          }
+          context.putImageData(image, 0, 0);
+          d3Selection.select(canvas)
+            .datum(schemeObj);
+          tag.refs.overlay.appendChild(canvas);
+          if (selected === schemeObj.key) {
+            const canv = document.createElement('canvas');
+            const cont = canvas.getContext('2d');
+            canv.setAttribute('width', width);
+            canv.setAttribute('height', height);
+            cont.drawImage(canvas, 0, 0);
+            // canvas.onclick = open;
+            tag.refs.display.append(canvas);
+            opts.setColorScheme(schemeObj);
+          } else {
+            d3Selection.select(canvas)
+              .datum(schemeObj)
+              .on('click', select);
+          }
+        });
+        // If colors should be inverted, invert them
+        if (tag.inverted) {
+          d3Selection.select(tag.root).selectAll('canvas')
+            .style('transform', 'scale(-1, 1)');
+        }
+      // Case when color scheme is categorical.
+      } else {
+        tag.colorDisplayBars = d3Selection.select(tag.refs.categoricalcolors).selectAll('div')
+          .data(schemes)
+          .enter()
+          .append('div')
+          .style('height', '1.5em')
+          .on('click', (d) => {
+            opts.controller.trigger('colorscheme::change', { key: d.key });
+            open();
+          });
+        tag.colorDisplayBars.selectAll('div')
+          .data(d => d.colorArray)
+          .enter()
+          .append('div')
+          .style('width', function () {
+            return `${100 / d3Selection.select(this.parentElement).data()[0].colorArray.length}%`;
+          })
+          .style('height', '100%')
+          .style('float', 'left')
+          .style('background-color', d => d3Color.rgb(d));
+        tag.colorDisplayBars.each(function (d) {
+          if (d.key === tag.selected.key) {
+            tag.refs.display.appendChild(this.cloneNode(true));
+          }
+        });
+      }
+    }
+    /**
+     * Open drop-down color select
+     *
+     */
+    function open() {
+      const element = tag.refs.overlay;
+      if (element.style.display === 'block') {
+        element.style.display = 'none';
+      } else {
+        element.style.display = 'block';
+        // Add close event listener to page
+        document.addEventListener('click', close);
+      }
+    }
+    /**
+     * Close drop-down color select
+     *
+     */
+    function close(evt) {
+      // Close drawer if click is outside drop-down
+      if (!tag.isChildOf(evt.target, tag.root)) {
+        const element = tag.refs.overlay;
+        element.style.display = 'none';
+        // Remove close event listener from page
+        document.removeEventListener('click', close);
+      }
+    }
+    /**
+     * Set selected color scheme
+     * @param {String} colorSchemeKey - key of the color scheme to select
+     */
+    function setColorScheme(colorSchemeKey) {
+      // Remove all children of the current color display
+      for (let i = 0, { children } = tag.refs.display; i < children.length; i += 1) {
+        tag.refs.display.removeChild(children[i]);
+      }
+      // Copy the currently selected color scheme bar to display
+      tag.colorDisplayBars.each(function (d) {
+        if (d.key === colorSchemeKey) {
+          tag.refs.display.appendChild(this.cloneNode(true));
+        }
+      });
+    }
+  </script>
+</colorpicker>

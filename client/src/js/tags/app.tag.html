@@ -1,0 +1,63 @@
+/**
+ * Copyright (c) 2018 Sebastian Altenhuber, Patrick Humme
+ *
+ * @file Base riot tag of the app. Manages mounting different views and subviews to page content tags.
+ * @author Sebastian Altenhuber <sebastian.altenhuber@gmail.com>
+ * @author Patrick Humme <pathumme@gmail.com>
+ */
+<app>
+  <topbar state={ state } controller={ controller }/>
+  <main-content state={ state } controller={ controller } />
+  <script type="es6">
+    import debounce from '../utils/debounce';
+
+    const tag = this;
+    // Make function available on tag object
+    tag.mountView = mountView;
+    // Get controller from options
+    tag.controller = opts.controller;
+    // Initialize state and make observable
+    tag.state = riot.observable({
+      user: opts.user,
+      view: null,
+      subview: null,
+      datasetId: null,
+      metadataUpdate: false,
+    });
+    // 'Debounce' (rate limit) firing of requests to once every 500ms
+    tag.emit = debounce(() => { tag.state.trigger('window::resize'); }, 500, tag);
+    // On app mount, start firing resize events on window resize
+    tag.on('mount', () => {
+      window.addEventListener('resize', tag.emit);
+    });
+    // On app unmount, stop firing resize events on window resze
+    tag.on('unmount', () => {
+      window.removeEventListener('resize', tag.emit);
+    });
+
+    /**
+     * Mount the subview passed in the controller
+     * @param {Controller} controller - Controller instance
+     */
+    function mountView(controller) {
+      const { view, subview } = controller;
+      // If controller is different from current one, switch controller
+      if (tag.controller !== controller) {
+        tag.update({ controller });
+      }
+      // If view is different from current one, change view and
+      // trigger view change event on state
+      if (tag.state.view !== view) {
+        tag.state.view = view;
+        tag.state.subview = undefined;
+        tag.state.trigger('view::change');
+      }
+      // If subview is different from current one, change subview and
+      // trigger subview change event on state
+      if (tag.state.subview !== subview) {
+        tag.state.subview = subview;
+        tag.state.trigger('subview::change');
+      }
+    }
+  </script>
+</app>

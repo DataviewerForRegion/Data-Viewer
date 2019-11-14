@@ -1,0 +1,58 @@
+/**
+ * Copyright (c) 2018 Sebastian Altenhuber, Patrick Humme
+ * 
+ * @file Login page
+ * @author Sebastian Altenhuber <sebastian.altenhuber@gmail.com>
+ * @author Patrick Humme <pathumme@gmail.com>
+ */
+<login>
+  <div class="o-container o-container--small">
+    <form class="o-form-element" id="login" method="post" onsubmit={ auth }>
+      <label class="c-label" for="username">Username:</label>
+      <input class="c-field" ref="username" type="text", name="username">
+      <label class="c-label" for="password">Password:</label>
+      <input class="c-field" ref="password" type="password", name="password"> 
+      <button type="submit" class="c-button" value="Login">Login</button>
+    </form>
+    <div class="c-alert c-alert--error" if={ error }>{ error }</div>
+  </div>
+  <script type="es6">
+    const tag = this;
+    tag.auth = auth;
+
+    tag.on('mount', () => {
+      // If user is already logged in, redirect to admin view
+      if (opts.state.user.isLoggedIn) {
+        riot.route('/admin');
+      }
+    });
+    /**
+     * Authenticate with given username and password
+     * @param {Event} evt - Submit event
+     */
+    function auth(evt) {
+      evt.preventDefault();
+      const username = tag.refs.username.value;
+      const password = tag.refs.password.value;
+      opts.state.user.authenticate(username, password).then((response) => {
+        console.log(response);
+        opts.state.user = response;
+        opts.state.trigger('user::update');
+        const url = (opts.controller.query.next) ? `/admin/${opts.controller.query.next}` : '/admin';
+        riot.route(url);
+        riot.route(url);
+        riot.route(url);
+        riot.route(url);
+        riot.route(url);
+        riot.route(url);
+        riot.route(url);
+      // Display error
+      }).catch((error) => {
+        console.error(error);
+        this.error = error.statusText;
+        this.update();
+      });
+    }
+
+  </script>
+</login>

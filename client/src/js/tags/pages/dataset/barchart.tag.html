@@ -1,0 +1,578 @@
+/**
+ * Copyright (c) 2018 Sebastian Altenhuber, Patrick Humme
+ * 
+ * @file Implements a bar chart in a riot tag
+ * @author Sebastian Altenhuber <sebastian.altenhuber@gmail.com>
+ * @author Patrick Humme <pathumme@gmail.com>
+ */
+<chart-bar>
+  <div class="o-grid o-grid--small-full o-grid--large-fit o-grid--bottom o-grid--wrap">
+    <div class="o-grid__cell">
+      <label>
+        <span class="c-tooltip" aria-label="Select the variable to be visualized">
+          Variable select:
+        </span>
+        <select onchange={ settingsEventHandler(chart.settings.variable) } class="c-field">
+          <option value="default">Please select a variable !</option>
+          <option each={ attribute in valueAttributes } 
+            value={ attribute.key } 
+            data={ attribute } 
+            selected={ chart.settings.variable.selected && attribute.key === chart.settings.variable.selected.key }>
+              { attribute.name }
+          </option>
+        </select>
+      </label>
+    </div>
+    <div class="o-grid__cell">
+      <span class="c-input-group">
+        <button class="c-button {c-button--active: chart.settings.showSelection.value, c-button--ghost: !chart.settings.showSelection.value}" 
+          type="button" onclick={ settingsEventHandler(chart.settings.showSelection) } 
+          value="true"
+          disabled={ selectionEmpty }>
+            Selection
+        </button>
+        <button class="c-button {c-button--active: !chart.settings.showSelection.value, c-button--ghost: chart.settings.showSelection.value}" 
+          type="button" onclick={ settingsEventHandler(chart.settings.showSelection) } 
+          value="false">
+            Dataset
+        </button>
+      </span>
+    </div>
+    <div class="o-grid__cell">
+      <span class="c-input-group">
+        <button class="c-button {c-button--active: !chart.settings.sortDescending.value, c-button--ghost: chart.settings.sortDescending.value}" 
+          type="button" onclick={ settingsEventHandler(chart.settings.sortDescending) } 
+          value="false">
+            Ascending
+        </button>
+        <button class="c-button {c-button--active: chart.settings.sortDescending.value, c-button--ghost: !chart.settings.sortDescending.value}"
+          type="button" onclick={ settingsEventHandler(chart.settings.sortDescending) } 
+          value="true">
+            Descending
+        </button>
+      </span>
+    </div>
+    <div class="o-grid__cell">
+      <range-slider-text label="Bar Height" min="30" max="100" step="1" start={ chart.styleSettings.bars.height.value } on-slide={ setBarHeight } />
+    </div>
+    <div class="o-grid__cell o-grid__cell--width-100">
+      <div id="error">  
+      </div>
+      <div ref="barchart" class="chart" style="position:relative;">
+        <div class="settings-panel" style="position:absolute;">
+          <div>
+            <i class="settings-panel--icon fa fa-2x fa-cog u-high"></i>
+          </div>
+          <div class="settings-panel--content u-high" ref="settings-panel--content">
+            <h4 class="c-heading">Settings</h4>
+            <h5 class="c-heading">Bars</h5>
+            <ul class="c-list c-list--unstyled">
+              <li class="c-list__item">
+                <label class="c-label">
+                  <span class="c-tooltip c-tooltip--left" aria-label="Select the label attribute for the y-Axis">
+                    Label Attribute
+                  </span>
+                  <select onchange={ settingsEventHandler(chart.settings.label) } class="c-field">
+                    <option each={ labelAttributes } 
+                      value={ key } 
+                      selected={ chart.settings.label.selected.key === key }>
+                      { name }
+                    </option>
+                  </select>
+                </label>
+              </li>
+              <li class="c-list__item">
+                <label class="c-toggle">
+                  <input type="checkbox" 
+                    checked={ chart.styleSettings.bars.fill.multiHue.value }
+                    onclick={ styleEventHandler(chart.styleSettings.bars.fill.multiHue) }>
+                    <div class="c-toggle__track">
+                      <div class="c-toggle__handle"}></div>
+                    </div>
+                  </input>
+                  Multi Colored Bars
+                </label>
+              </li>
+              <li if={ !chart.styleSettings.bars.fill.multiHue.value } class="c-list__item">
+                <label class="c-label">
+                  Set Bar Color
+                  <input type="color" 
+                    class="c-field" 
+                    name="bars" 
+                    value={ chart.styleSettings.bars.fill.value } 
+                    onChange={ styleEventHandler(chart.styleSettings.bars.fill) }>
+                </label>
+              </li>
+              <li class="c-list__item">
+                <label class="c-label">
+                  Labels Color
+                  <input type="color" 
+                    class="c-field" 
+                    name="labels" 
+                    value={ chart.styleSettings.labels.fill.value } 
+                    onChange={ styleEventHandler(chart.styleSettings.labels.fill) }>
+                </label>
+              </li>
+              <li class="c-list__item">
+                <label class="c-toggle">
+                  <input type="checkbox" onclick={ styleEventHandler(chart.styleSettings.labels.showInBarLabels) } 
+                    checked = {chart.styleSettings.labels.showInBarLabels.value}>
+                    <div class="c-toggle__track">
+                      <div class="c-toggle__handle"></div>
+                    </div>
+                  </input>
+                  Show Labels in Bars
+                </label>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script type="es6">
+    import * as d3Selection from 'd3-selection';
+    import * as d3Array from 'd3-array';
+    import * as d3Color from 'd3-color';
+    import * as d3Scale from 'd3-scale';
+    import * as d3Axis from 'd3-axis';
+    import * as d3Format from 'd3-format';
+    import * as d3Ease from 'd3-ease';
+    import * as d3Transition from 'd3-transition';
+
+    const tag = this;
+
+    tag.drawChart = drawChart;
+    tag.init = init;
+    tag.receivesUpdates = true;
+    tag.updateChart = updateChart;
+    tag.setBarHeight = setBarHeight;
+    tag.settingsEventHandler = settingsEventHandler;
+    tag.styleEventHandler = styleEventHandler;
+    tag.resize = resize;
+
+    tag.chart = {};
+    const { chart } = tag;
+    tag.mixin('getData');
+    tag.mixin('parseState');
+
+    chart.settings = {
+      variable: {
+        selected: undefined,
+        urlParamKey: 'var',
+        type: 'select',
+        get options() { return tag.valueAttributes; },
+      },
+      label: {
+        selected: undefined,
+        urlParamKey: 'lb',
+        type: 'select',
+        get options() { return tag.labelAttributes; },
+      },
+      showSelection: {
+        value: true,
+        urlParamKey: 'sl',
+        type: 'boolean',
+      },
+      sortDescending: {
+        value: true,
+        urlParamKey: 'dsc',
+        type: 'boolean',
+      },
+    };
+    chart.styleSettings = {
+      bars: {
+        height: {
+          value: undefined,
+          urlParamKey: 'ht',
+          type: 'slide',
+          label: 'Bar Height',
+        },
+        fill: {
+          value: '#000000',
+          type: 'color',
+          urlParamKey: 'bc',
+          multiHue: {
+            value: true,
+            type: 'boolean',
+          },
+        },
+      },
+      labels: {
+        showInBarLabels: {
+          value: true,
+          urlParamKey: 'bl',
+          type: 'boolean',
+        },
+        fill: {
+          value: '#000000',
+          urlParamKey: 'lc',
+          type: 'color',
+        },
+      },
+    };
+
+    /**
+     * Event handler for chart settings. Returns event handler for given settings object.
+     * Change corresponding settingsObject and call change function
+     * @param {Object} settingsObject - Object containing settings and change function
+     * @returns {Function}
+     */
+    function settingsEventHandler(settingsObject) {
+      // Return event handler for settingsObject
+      return function (evt) {
+        let value;
+        const settings = settingsObject;
+        // If the element is a select input element, get corresponding option and save it
+        if (settings.type === 'select') {
+          settings.selected = settings.options
+            .find(option => option.key === evt.target.value);
+          value = settings.selected.key;
+          // Get state to URL parameters
+        } else if (settings.type === 'boolean') {
+          value = (evt.target.value === 'true');
+          settings.value = value;
+          value = value ? 1 : 0;
+        }
+        opts.controller.setState(opts.subview, settings.urlParamKey, value);
+        drawChart();
+      };
+    }
+    /**
+     * Event handler for chart style settings. Returns event handler for given settings object.
+     * Change corresponding settingsObject and call change function
+     * @param {Object} settingsObject - Object containing settings and change function
+     * @returns {Function}
+     */
+    function styleEventHandler(settingsObject) {
+      return function (evt) {
+        let val;
+        const settings = settingsObject;
+        // If respective setting is a checkbox use checked attribute
+        if (settings.type === 'boolean') {
+          val = evt.target.checked;
+        // Else use value attribute
+        } else {
+          val = evt.target.value;
+        }
+        settings.value = val;
+        applyStyleSettings();
+        if (settings.type === 'boolean') {
+          val = (val) ? 1 : 0;
+        // If type is color, remove leading #
+        } else if (settings.type === 'color') {
+          val = val.slice(1);
+        }
+        // Set state for this view in controller
+        opts.controller.setState(opts.subview, settings.urlParamKey, val);
+      };
+    }
+    function applyStyleSettings() {
+      const {
+        bars,
+        labels,
+      } = chart.styleSettings;
+      if (chart.barGroups) {
+        chart.barGroups.selectAll('rect')
+          .style('fill', (d) => {
+            const color = bars.fill.multiHue.value
+              ? tag.colorScale(d.colorId)
+              : bars.fill.value;
+            return d3Color.rgb(color);
+          });
+      }
+      if (chart.labels) {
+        chart.labels
+          .style('fill', d3Color.rgb(labels.fill.value))
+          .style('visibility', () => {
+            const visibility = labels.showInBarLabels.value
+              ? 'visible'
+              : 'hidden';
+            return visibility;
+          });
+      }
+    }
+    function resize() {
+      if (tag.initialized) {
+        chart.w = parseInt(d3Selection.select(tag.refs.barchart).style('width'), 10) - chart.margin.left - chart.margin.right;
+        const { valueAttrib, labelAttrib } = chart;
+        drawChart(tag.dataSource, valueAttrib, labelAttrib, tag.refs.barchart, tag.sortFunction);
+      }
+    }
+    function updateChart() {
+      tag.colorScale.range(opts.controller.getState('global').cs.colors);
+      if (tag.dataset.selection.size > 0) {
+        chart.settings.showSelection.value = true;
+        tag.selectionEmpty = false;
+      }
+      if (chart.settings.variable.selected) drawChart();
+    }
+    function init(dataset, selection) {
+      tag.valueAttributes = tag.dataset.Attributes.values;
+      tag.labelAttributes = tag.dataset.Attributes.labels;
+
+      if (selection.size === 0) {
+        chart.settings.showSelection.value = false;
+        tag.selectionEmpty = true;
+      }
+      // Parse state from url parameters
+      tag.parseState(chart.settings, chart.styleSettings, 'urlParamKey');
+      // Default to first label attribute, if none selected
+      if (!chart.settings.label.selected) {
+        [chart.settings.label.selected] = chart.settings.label.options;
+      }
+      // Create color scale
+      tag.colorScale = d3Scale.scaleOrdinal();
+      const colorIdSet = new Set();
+      tag.dataset.json.features.forEach(feature => colorIdSet.add(feature.colorId));
+      tag.colorScale.domain([...colorIdSet]);
+      tag.colorScale.range(opts.controller.getState('global').cs.colors);
+      if (chart.barGroups) {
+        chart.barGroups.select('rect')
+          .style('fill', d => d3Color.rgb(tag.colorScale(d.colorId)));
+      }
+      tag.initialized = true;
+      tag.sortFunction = (chart.settings.sortDescending.value)
+        ? d3Array.descending
+        : d3Array.ascending;
+      console.log(chart.settings.variable.selected);
+      if (chart.settings.variable.selected) {
+        drawChart();
+      }
+    }
+
+    function setBarHeight(evt) {
+      const height = evt.target.value;
+      chart.styleSettings.bars.height.value = height;
+      opts.controller.setState(opts.subview, chart.styleSettings.bars.height.urlParamKey, height);
+      drawChart();
+    }
+    /**
+     * Split up SVG text elements by seperator to tspans (for line breaks)
+     * @param {String} seperator - Seperator to split text elements on
+     */
+    function textToTextSpan(selection, seperator) {
+      selection.each(function (d) {
+        const textElem = d3Selection.select(this);
+        const textArray = d.split(seperator);
+        textElem.text('');
+        textArray.forEach((text, index, arr) => {
+          textElem
+            .attr('y', `${0.32 - (0.32 * (arr.length - 1))}em`)
+            .append('tspan')
+            .text(text)
+            .attr('dy', index ? '1em' : 0)
+            .attr('dx', '-1em')
+            .attr('x', 0)
+            .style('text-anchor', 'end');
+        });
+      });
+    }
+    /**
+     * Draw barchart.
+     * @param {<Array>Object} data - Array of features
+     * @param {Object} attribute - Attribute to visualize
+     * @param {String} labelkey - Key of the label to display on the y-Axis
+     * @param {HTMLElement} element - HTML element to draw chart in
+     * @param {Function} sortFunction - Sort function to sort data by
+     *
+     */
+    function drawChart() {
+      chart.margin = {
+        top: 40,
+        left: 100,
+        bottom: 40,
+        right: 40,
+      };
+      // Set variables to tag objects
+      const valueAttrib = chart.settings.variable.selected;
+      const labelAttrib = chart.settings.label.selected;
+
+      const data = (chart.settings.showSelection.value)
+        ? [...tag.dataset.selection]
+        : tag.dataset.json.features;
+
+      const sortFunction = (chart.settings.sortDescending.value)
+        ? d3Array.descending
+        : d3Array.ascending;
+
+      const barHeight = chart.styleSettings.bars.height.value;
+
+      const format = d3Format.format(',.2s');
+      const t = d3Transition.transition()
+        .duration(1000)
+        .ease(d3Ease.easeLinear);
+
+      // Sort data on selected attribute
+      data.sort((a, b) => {
+        const { key } = valueAttrib;
+        return sortFunction(a.properties[key], b.properties[key]);
+      });
+
+      // Check if barheight is set, if not assume default value.
+      const barHeightIsSet = barHeight || false;
+      tag.barHeight = barHeight || 35;
+
+      // Get height and width from containing HTML element if they have not been defined yet.
+      if (!chart.w) {
+        chart.w = parseInt(d3Selection.select(tag.refs.barchart).style('width'), 10);
+      }
+      chart.h = (data.length * tag.barHeight) + chart.margin.top + chart.margin.bottom;
+      // Create scale for x-axis if it does not exist
+      if (!chart.xScale) {
+        chart.xScale = d3Scale.scaleLinear();
+      }
+      // Set domain and range for x-axis scale
+      chart.xScale
+        .domain([0, 1.1 * d3Array.max(data, d =>
+          d.properties[valueAttrib.key])])
+        .range([0, chart.w]);
+
+      // Create scale for y-axis if it does not exist
+      if (!chart.yScale) {
+        chart.yScale = d3Scale.scaleBand();
+      }
+      // Set domain and range for y-axis scale
+      chart.yScale
+        .domain(data.map(d => d.properties[labelAttrib.key]))
+        .range([chart.margin.top, chart.h])
+        .padding(0.3);
+
+      // Append svg with the desired size and margins
+      if (!chart.svg) {
+        chart.svg = d3Selection.select(tag.refs.barchart).append('svg');
+      }
+      chart.svg
+        .attr('width', chart.w + chart.margin.left + chart.margin.right)
+        .attr('height', chart.h + chart.margin.top + chart.margin.bottom);
+
+      if (!chart.g) {
+        chart.g = chart.svg
+          .append('g')
+          .attr('transform', `translate(${chart.margin.left}, ${chart.margin.top})`);
+      }
+      if (!chart.yax) {
+        chart.yax = chart.g.append('g');
+      }
+      // Add y-axis
+      chart.yax
+        .attr('class', 'axis--y')
+        .attr('transform', 'translate(0, 0)')
+        .call(d3Axis.axisLeft(chart.yScale));
+      let maxLabelWidth = 0;
+      let maxLabelHeight = 30;
+      // Split labels on spaces and add to tspan elements for line breaks.
+      // Calculate maximum label width and height
+      chart.yax.selectAll('g.tick > text')
+        .call(textToTextSpan, ' ')
+        .each(function () {
+          const { width, height } = this.getBoundingClientRect();
+          if (maxLabelWidth < width) maxLabelWidth = width;
+          if (maxLabelHeight < height) maxLabelHeight = height;
+        });
+
+      if (!barHeightIsSet) {
+        tag.barHeight = (Math.floor(maxLabelHeight) + 1);
+        chart.styleSettings.bars.height.value = tag.barHeight;
+        chart.h = (data.length * tag.barHeight) + chart.margin.top + chart.margin.bottom;
+        chart.yScale
+          .range([chart.margin.top, chart.h])
+          .padding(0.3);
+
+        chart.yax.call(d3Axis.axisLeft(chart.yScale));
+
+        chart.yax.selectAll('g.tick > text')
+          .call(textToTextSpan, ' ');
+      }
+      // Add buffer for nice display
+      chart.margin.left = maxLabelWidth * 1.25;
+
+      // Get height and width from containing HTML element if they have not been defined yet
+      chart.w = parseInt(d3Selection.select(tag.refs.barchart).style('width'), 10) - chart.margin.left - chart.margin.right;
+      // Set the x-scale's range to fit the chart size
+      chart.xScale
+        .range([0, chart.w]);
+      // Set svg element's width and height to take into account margins
+      chart.svg
+        .attr('width', chart.w + chart.margin.left + chart.margin.right)
+        .attr('height', chart.h + chart.margin.top + chart.margin.bottom);
+
+      // Translate the group containing features to be offset by margins
+      chart.g
+        .attr('transform', `translate(${chart.margin.left}, ${chart.margin.top})`);
+      // Add top oriented x-axis
+      if (!chart.xaxTop) {
+        chart.xaxTop = chart.g.append('g');
+      }
+      chart.xaxTop
+        .attr('class', 'axis--x')
+        .attr('transform', `translate(0, ${chart.margin.top})`)
+        .call(d3Axis.axisTop(chart.xScale));
+      // Add x-axis label
+      if (!chart.xAxisLabel) {
+        chart.xAxisLabel = chart.xaxTop.append('text');
+      }
+      chart.xAxisLabel
+        .text(valueAttrib.name)
+        .classed('axis--x__label', true)
+        .attr('dy', '-2em');
+      // Add x-axis grid
+      chart.xGrid = d3Axis.axisTop(chart.xScale)
+        .tickSize(-chart.h + chart.margin.bottom)
+        .tickFormat('');
+      if (!chart.grid) {
+        chart.grid = chart.g.append('g');
+      }
+      chart.grid
+        .classed('grid--x', true)
+        .attr('transform', `translate(0, ${chart.margin.top})`)
+        .call(chart.xGrid);
+
+      // Add bottom oriented x-axis
+      if (!chart.xaxBot) {
+        chart.xaxBot = chart.g.append('g');
+      }
+      chart.xaxBot
+        .classed('axis--x', true)
+        .attr('transform', `translate(0, ${chart.h})`)
+        .call(d3Axis.axisBottom(chart.xScale));
+      // Data join gor bar groups
+      chart.barGroups = chart.g.selectAll('g.bar')
+        .data(data, d => d.id);
+      // Remove unneeded elements
+      chart.barGroups.exit().remove();
+      // Append new bar groups from the enter selection
+      const newBarGroups = chart.barGroups.enter()
+        .append('g')
+        .classed('bar', true);
+      // Append bars
+      newBarGroups.append('rect');
+      newBarGroups.append('text');
+      // Merge entering and existing bars
+      chart.barGroups = newBarGroups.merge(chart.barGroups);
+      // Change bars positioning along the y-Axis
+      chart.barGroups
+        .attr('transform', d =>
+          `translate(0, ${chart.yScale(d.properties[labelAttrib.key])})`);
+      // Set height and width of bars
+      chart.barGroups.select('rect')
+        .transition(t)
+        .attr('width', d => chart.xScale(d.properties[valueAttrib.key]))
+        // Set height to chart height - scaled value
+        .attr('height', chart.yScale.bandwidth());
+      // Add labels to bars
+      chart.labels = chart.barGroups.select('text');
+      // Set labels text and position them
+      chart.labels
+        .classed('bar--label', true)
+        .transition(t)
+        .text(d => format(d.properties[valueAttrib.key]))
+        .attr('x', d => chart.xScale(d.properties[valueAttrib.key]))
+        .attr('y', () => chart.yScale.bandwidth() / 2)
+        .attr('dx', '1em')
+        .attr('dy', '0.32em');
+      // Apply style settings to all elements
+      applyStyleSettings();
+    }
+  </script>
+</chart-bar>

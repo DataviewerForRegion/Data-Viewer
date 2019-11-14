@@ -1,0 +1,1335 @@
+/**
+ * Copyright (c) 2018 Sebastian Altenhuber, Patrick Humme
+ * 
+ * @file Scatterplot with zooming, panning and brushing
+ * @author Sebastian Altenhuber <sebastian.altenhuber@gmail.com>
+ * @author Patrick Humme <pathumme@gmail.com>
+ */
+<chart-scatter>
+  <div ref="panel" class="o-panel">
+    <div class="o-grid o-grid--wrap">
+      <div class="o-grid__cell o-grid__cell--width-100 o-grid__cell--width-50@large">
+        <label class="c-label">
+          X-Axis Variable
+          <select onchange={ settingsEventHandler(chart.settings.xVar) } class="c-field" name="xAxis">
+            <option value="default">Please select the xAxis attribute !</option>
+            <option each={ valueAttributes }
+              value={ key }
+              title={ name } 
+              selected={ chart.settings.xVar.selected && chart.settings.xVar.selected.key === key }>
+              { name }
+            </option>
+          </select>
+        </label>
+      </div>
+      <div class="o-grid__cell o-grid__cell--width-100 o-grid__cell--width-50@large">
+        <label class="c-label">
+          Y-Axis Variable
+          <select onchange={ settingsEventHandler(chart.settings.yVar) } class="c-field" name="yAxis">
+            <option value="default">Please select the yAxis attribute !</option>
+            <option each={ valueAttributes }
+              value={ key }
+              title={ name } 
+              selected={ chart.settings.yVar.selected && chart.settings.yVar.selected.key === key }>
+              { name }
+            </option>
+          </select>
+        </label>
+      </div>
+      <div class="o-grid__cell o-grid__cell--width-50">
+        <span class="c-input-group">
+          <button class="c-button c-tooltip c-tooltip--right {c-button--active: chart.settings.showSelection.value, c-button--ghost: !chart.settings.showSelection.value}" 
+            aria-label="Display the current selection"
+            type="button" 
+            onclick={ settingsEventHandler(chart.settings.showSelection) } 
+            value="true">Selection</button>
+          <button class="c-button c-tooltip c-tooltip--right {c-button--active: !chart.settings.showSelection.value, c-button--ghost: chart.settings.showSelection.value}" 
+            aria-label="Display the whole dataset"
+            type="button" 
+            onclick={ settingsEventHandler(chart.settings.showSelection) } 
+            value="false">Dataset</button>
+        </span>
+      </div>
+    </div>
+    <div class="o-grid" style="height:85%;">
+      <div class="o-grid__cell o-grid__cell--width-100 o-grid__cell--width-80@large">
+        <div ref="scatterplot" class="chart" style="position:relative;height:90%">
+          <div class="settings-panel" style="position:absolute" onclick={ toggleSettingsPanel } ref="settings-panel">
+            <div class="settings-panel--icon" ref="settings-panel--icon">
+              <i class="fa fa-2x fa-cog u-high"></i>
+            </div>
+            <div class="settings-panel--content u-high" ref="settings-panel--content">
+              <h4>Settings</h4>
+              <ul class="c-list c-list--unstyled">
+                <li class="c-list__item">
+                  <label class="c-toggle c-tooltip c-tooltip--left"
+                    aria-label="Toggle the display of labels on/off">
+                    <input type="checkbox" 
+                      checked={ chart.styleSettings.labels.display.value } 
+                      onclick={ styleEventHandler(chart.styleSettings.labels.display) }>
+                      <div class="c-toggle__track">
+                        <div class="c-toggle__handle"}></div>
+                      </div>
+                    </input>
+                    Labels
+                  </label>
+                </li>
+                <li class="c-list__item">
+                  <label class="c-toggle c-tooltip c-tooltip--left"
+                    aria-label="Toggle the display of the grid lines on/off">
+                    <input type="checkbox" 
+                      checked={ chart.styleSettings.grid.display.value } 
+                      onclick={ styleEventHandler(chart.styleSettings.grid.display) }>
+                      <div class="c-toggle__track">
+                        <div class="c-toggle__handle"}></div>
+                      </div>
+                    </input>
+                    Grid
+                  </label>
+                </li>
+                <li class="c-list__item">
+                  <label class="c-toggle c-tooltip c-tooltip--left"
+                    aria-label="Toggle the display of the regression on/off">
+                    <input type="checkbox" checked={ chart.styleSettings.regLine.display.value } 
+                      onclick={ styleEventHandler(chart.styleSettings.regLine.display) }>
+                      <div class="c-toggle__track">
+                        <div class="c-toggle__handle"}></div>
+                      </div>
+                    </input>
+                    Regression Line
+                  </label>
+                </li>
+                <li class="c-list__item">
+                  <label class="c-label c-tooltip c-tooltip--left"
+                    aria-label="Select the variable used to label the dots">
+                    Label
+                    <select onchange={ settingsEventHandler(chart.settings.label) } 
+                      class="c-field">
+                      <option each={ labelAttributes } 
+                        value={ key } 
+                        selected={ chart.settings.label.selected && chart.settings.label.selected.key === key }>
+                        { name }
+                      </option>
+                    </select>
+                  </label>
+                </li>
+                <li class="c-list__item">
+                  <label class="c-label c-tooltip c-tooltip--left"
+                    aria-label="Select the variable used in the tooltip">
+                    Tooltip Label
+                    <select onchange={ settingsEventHandler(chart.settings.tooltipLabel) } 
+                      class="c-field">
+                      <option each={ labelAttributes } 
+                        value={ key } 
+                        selected={ chart.settings.label.selected && chart.settings.tooltipLabel.selected.key === key }>
+                        { name }
+                      </option>
+                    </select>
+                  </label>
+                </li>
+                <li class="c-list__item">
+                  <label class="c-toggle c-tooltip c-tooltip--left"
+                    aria-label="Toggle between multi-color and single-color">
+                    <input type="checkbox" 
+                      checked={ chart.styleSettings.dots.fill.multiHue.value }
+                      onclick={ styleEventHandler(chart.styleSettings.dots.fill.multiHue) }>
+                      <div class="c-toggle__track">
+                        <div class="c-toggle__handle"}></div>
+                      </div>
+                    </input>
+                    Multi Colored Dots
+                  </label>
+                </li>
+                <li class="c-list__item">
+                  <label class="c-label">
+                    Dots Single Color
+                    <input type="color" class="c-field" 
+                      value={ chart.styleSettings.dots.fill.value }
+                      onchange={ styleEventHandler(chart.styleSettings.dots.fill) }
+                      disabled={ chart.styleSettings.dots.fill.multiHue.value }>
+                  </label>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="o-grid__cell o-grid__cell--width-20@large o-grid__cell--hidden o-grid__cell--visible@large">
+        <div id="scatterplot_settings" class="settings--panel">
+          <ul class="c-list c-list--unstyled">
+            <li class="c-list__item">
+              <span class="c-input-group">
+                <button value="panZoom"
+                  class="c-button u-small c-tooltip c-tooltip--left {c-button--active: chart.isZoom, c-button--ghost: chart.isBrush}" 
+                  type="button" onclick={ toggleZoom }
+                  aria-label="Pan & Zoom">
+                  <i class="fa fa-2x fa-hand-grab-o"></i>
+                </button>
+                <button value="brush"
+                  class="c-button u-small c-tooltip c-tooltip--right {c-button--active: chart.isBrush, c-button--ghost: chart.isZoom}" 
+                  type="button" onclick={ toggleZoom }
+                  aria-label="Rectangular Select">
+                  <i class="fa fa-2x fa-crop"></i>
+                </button>
+              </span>
+            </li>
+            <li class="c-list__item">
+              <button class="c-button u-small c-tooltip c-tooltip--left" 
+                type="button" 
+                onclick={ resetZoom } 
+                disabled={ !chart.zoomed }
+                aria-label="Reset Zoom to initial Level">
+                Reset Zoom
+              </button>
+            
+            </li>
+            <li class="c-list__item">
+              <button class="c-button u-small c-tooltip c-tooltip--left" 
+                type="button" 
+                onclick={ resetBrush } 
+                disabled={ !chart.brushed }
+                aria-label="Remove brush">
+                Remove Brush
+              </button>
+            
+            </li>
+            <li class="c-list__item">
+              <button class="c-button u-small c-tooltip c-tooltip--left" 
+                type="button" 
+                onclick={ zoomToBrush } 
+                disabled={ !chart.brushed }
+                aria-label="Zoom to brush extent">
+                Zoom to brush extent
+              </button>
+            
+            </li>
+            <li class="c-list__item">
+              <button class="c-button u-small c-tooltip c-tooltip--left" 
+                type="button" 
+                onclick={ brushToSelection } 
+                disabled={ !chart.brushed }
+                aria-label="Clear selection and add selected elements">
+                Brush to selection  
+              </button>
+            </li>
+            <li class="c-list__item">
+              <button class="c-button u-small c-tooltip c-tooltip--left" 
+                type="button" 
+                onclick={ addToSelection } 
+                disabled={ !chart.brushed }
+                aria-label="Add selected elements to existing selection">
+                Add to Selection
+              </button>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+<script>
+  import * as d3Selection from 'd3-selection';
+  import * as d3Array from 'd3-array';
+  import * as d3Transition from 'd3-transition';
+  import * as d3Scale from 'd3-scale';
+  import * as d3Format from 'd3-format';
+  import * as d3Zoom from 'd3-zoom';
+  import * as d3Quadtree from 'd3-quadtree';
+  import * as d3Brush from 'd3-brush';
+  import * as d3Color from 'd3-color';
+  import * as d3Axis from 'd3-axis';
+
+  const tag = this;
+  tag.onBrush = onBrush;
+  tag.onZoom = onZoom;
+  tag.resetBrush = resetBrush;
+  tag.toggleTooltip = toggleTooltip;
+  tag.init = init;
+  tag.resetZoom = resetZoom;
+  tag.resize = resize;
+  tag.toggleSelection = toggleSelection;
+  tag.search = search;
+  tag.brushToSelection = brushToSelection;
+  tag.covariance = covariance;
+  tag.toggleSingleMultiColor = toggleSingleMultiColor;
+  tag.addToSelection = addToSelection;
+  tag.setLabel = setLabel;
+  tag.settingsEventHandler = settingsEventHandler;
+  tag.toggleZoom = toggleZoom;
+  tag.resize = resize;
+  tag.zoomToBrush = zoomToBrush;
+  tag.panZoom = 'zoom';
+  tag.updateChart = updateChart;
+  tag.toggleSettingsPanel = toggleSettingsPanel;
+  tag.styleEventHandler = styleEventHandler;
+
+  tag.receivesUpdates = true;
+  tag.initialized = false;
+
+  tag.chart = {};
+  const { chart } = tag;
+  let tooltip;
+
+  tag.mixin('parseState');
+  tag.mixin('getData');
+  tag.mixin('isChildOf');
+
+  chart.isZoom = true;
+  chart.isBrush = false;
+  chart.created = false;
+
+  tag.on('mount', () => {
+    tooltip = toggleTooltip();
+  });
+
+  // Define default settings
+  chart.settings = {
+    xVar: {
+      selected: undefined,
+      urlParamKey: 'xv',
+      type: 'select',
+      get options() { return tag.valueAttributes; },
+      changeFn: setVariable,
+    },
+    yVar: {
+      selected: undefined,
+      urlParamKey: 'yv',
+      type: 'select',
+      get options() { return tag.valueAttributes; },
+      changeFn: setVariable,
+    },
+    label: {
+      selected: undefined,
+      urlParamKey: 'lb',
+      type: 'select',
+      get options() { return tag.labelAttributes; },
+      changeFn: setLabel,
+    },
+    tooltipLabel: {
+      selected: undefined,
+      urlParamKey: 'tl',
+      type: 'select',
+      get options() { return tag.labelAttributes; },
+    },
+    showSelection: {
+      type: 'boolean',
+      urlParamKey: 'sl',
+      value: true,
+      changeFn: toggleSelection,
+    },
+    translationX: {
+      value: 0,
+      urlParamKey: 'tx',
+      type: 'translation',
+    },
+    translationY: {
+      value: 0,
+      urlParamKey: 'ty',
+      type: 'translation',
+    },
+    translationK: {
+      value: 1,
+      urlParamKey: 'tk',
+      type: 'translation',
+    },
+  };
+
+  chart.styleSettings = {
+    dots: {
+      fill: {
+        value: '#000000',
+        urlParamKey: 'dc',
+        type: 'color',
+        changeFn: setColor,
+        multiHue: {
+          value: true,
+          urlParamKey: 'dmh',
+          type: 'boolean',
+          changeFn: toggleSingleMultiColor,
+        },
+      },
+      stroke: {
+        value: 0,
+        urlParamKey: 'dst',
+      },
+      radius: {
+        value: 3.5,
+        urlParamKey: 'drd',
+      },
+    },
+    labels: {
+      fill: {
+        value: '#000000',
+        type: 'color',
+        multiHue: {
+          value: false,
+          type: 'boolean',
+        },
+      },
+      display: {
+        value: true,
+        type: 'boolean',
+        urlParamKey: 'ld',
+        changeFn: toggleLabels,
+      },
+    },
+    grid: {
+      display: {
+        value: false,
+        type: 'boolean',
+        urlParamKey: 'gd',
+        changeFn: toggleGrid,
+      },
+    },
+    regLine: {
+      display: {
+        value: false,
+        type: 'boolean',
+        urlParamKey: 'rld',
+        changeFn: toggleRegression,
+      },
+    },
+  };
+
+  function toggleSettingsPanel() {
+    const elem = tag.refs['settings-panel--content'];
+    const { display } = elem.style;
+    if (display === 'block') {
+      elem.style.display = null;
+    } else {
+      elem.style.display = 'block';
+      window.addEventListener('click', closeSettingsPanel);
+    }
+  }
+
+  function closeSettingsPanel(evt) {
+    const settingsPanel = tag.refs['settings-panel'];
+    if (!tag.isChildOf(evt.target, settingsPanel)) {
+      tag.refs['settings-panel--content'].style.display = null;
+      window.removeEventListener('click', closeSettingsPanel);
+    }
+  }
+
+  /**
+   * Switch between single and multi colored dots.
+   * @param {Boolean} multiColorEnabled
+   */
+  function toggleSingleMultiColor(multiColorEnabled) {
+    chart.dots
+      .style('fill', (d) => {
+        const color = multiColorEnabled
+          ? tag.colorScheme(d.colorId)
+          : chart.styleSettings.dots.fill.value;
+        return color;
+      });
+  }
+  /**
+   * Set labels for scatter dots
+   *
+   */
+  function setLabel() {
+    chart.labels
+      .text(d => d.properties[chart.settings.label.selected.key]);
+  }
+  /**
+   * Event handler for chart settings. Returns event handler for given settings object.
+   * Change corresponding settingsObject and call change function
+   * @param {Object} settingsObject - Object containing settings and change function
+   * @returns {Function}
+   */
+  function settingsEventHandler(settingsObject) {
+    // Return event handler for settingsObject
+    return function eventHandler(evt) {
+      const settings = settingsObject;
+      const { urlParamKey } = settings;
+      // If the element is a select input element, get corresponding option and save it
+      if (settingsObject.type === 'select') {
+        settings.selected = settingsObject.options
+          .find(option => option.key === evt.target.value) || settings.selected;
+        // Get state to URL parameters
+        opts.controller.setState(opts.subview, urlParamKey, settings.selected.key);
+        // Call change function if it is defined
+        if (settings.changeFn) settings.changeFn();
+      } else if (settingsObject.type === 'boolean') {
+        const val = evt.target.value === 'true';
+        settings.value = val;
+        settings.changeFn(val);
+        opts.controller.setState(opts.subview, urlParamKey, (val) ? 1 : 0);
+      }
+    };
+  }
+
+  /**
+   * Event handler for chart style settings. Returns event handler for given settings object.
+   * Change corresponding settingsObject and call change function
+   * @param {Object} settingsObject - Object containing settings and change function
+   * @returns {Function}
+   */
+  function styleEventHandler(settingsObject) {
+    return function eventHandler(evt) {
+      let val;
+      // Get short handle to settings and settings type
+      const settings = settingsObject;
+      const { type } = settings;
+      // Boolean values get value from the checked attribute
+      if (type === 'boolean') {
+        val = evt.target.checked;
+      } else {
+        val = evt.target.value;
+      }
+      // Set value
+      settings.value = val;
+      // Call change function
+      settings.changeFn(val);
+
+      // Booleans are converted to 0 or 1
+      if (type === 'boolean') {
+        val = (val) ? 1 : 0;
+      // Hexadecimal color values get stripped of leading #
+      } else if (type === 'color') {
+        val = val.slice(1);
+      }
+      // Set state in controller
+      opts.controller.setState(opts.subview, settings.urlParamKey, val);
+    };
+  }
+  /**
+   * Update chart - Called on selection and color changes in other views
+   *
+   */
+  function updateChart() {
+    // If chart is not loaded, do nothing
+    if (!chart.created) return;
+    const {
+      xVar, yVar,
+    } = chart.settings;
+    // Get color scheme
+    tag.colorScheme.range(opts.controller.getState('global').cs.colors);
+
+    if (tag.dataset.selection.size === 0) {
+      chart.settings.showSelection = false;
+      drawChart(tag.dataset.json.features, xVar.selected, yVar.selected);
+    } else {
+      chart.settings.showSelection = true;
+      drawChart([...tag.dataset.selection], xVar.selected, yVar.selected);
+    }
+  }
+  /**
+   * Toggles display of the background coordinate grid
+   * @param {Boolean} displayGrid - Whether or not to display a grid matching the axis' ticks
+   *
+   */
+  function toggleGrid(displayGrid) {
+    // Display grid or hide it
+    if (displayGrid) {
+      // If grid exists, show it - if it does not exist draw it
+      drawGrid();
+      chart.grid.style('visibility', null);
+    } else if (chart.grid) {
+      chart.grid.style('visibility', 'hidden');
+    }
+    const { grid } = chart.styleSettings;
+    // Save value to settings
+    grid.display.value = displayGrid;
+    // Push value to state / URL parameters
+    opts.controller.setState(opts.subview, grid.display.urlParamKey, (displayGrid) ? 1 : 0);
+  }
+  /**
+   * Set color of dots
+   *
+   */
+  function setColor(color) {
+    chart.dots
+      .style('fill', d3Color.rgb(color));
+  }
+
+  /**
+   * Toggles display of the data point labels.
+   * @param {Boolean} displayLabels - Whether or not to display labels
+   */
+  function toggleLabels(displayLabels) {
+    if (displayLabels) {
+      chart.labels.style('visibility', null);
+    } else {
+      chart.labels.style('visibility', 'hidden');
+    }
+    const { labels } = chart.styleSettings;
+    labels.display.value = displayLabels;
+    opts.controller.setState(opts.subview, labels.display.urlParamKey, (displayLabels) ? 1 : 0);
+  }
+  /**
+   * Toggle display between dataset and current selection.
+   *
+   */
+  function toggleSelection(showSelection) {
+    const {
+      xVar, yVar,
+    } = chart.settings;
+    const features = (showSelection)
+      ? [...tag.dataset.selection]
+      : tag.dataset.json.features;
+    drawChart(features, xVar.selected, yVar.selected);
+    // If regression line exists, redraw it
+    if (chart.regLine) {
+      drawRegressionLine(chart.regressionData, undefined, undefined, true);
+    }
+  }
+  /**
+   * Set variable to draw in chart
+   *
+   */
+  function setVariable() {
+    const {
+      xVar, yVar,
+    } = chart.settings;
+    if (xVar.selected && yVar.selected) {
+      // If zoomable overlay exists, reset pan & zoom
+      if (chart.overlay) {
+        chart.transform = d3Zoom.zoomIdentity;
+        chart.overlay
+          .transition()
+          .duration(1000)
+          .call(chart.zoom.transform, chart.transform);
+      }
+      const data = chart.settings.showSelection.value
+        ? [...tag.dataset.selection]
+        : tag.dataset.json.features;
+      drawChart(data, xVar.selected, yVar.selected);
+    }
+  }
+  /**
+   * Initialize default variables and parse state from URL parameters
+   * @param {Object} dataset - Dataset object.
+   */
+  function init(dataset) {
+    tag.valueAttributes = dataset.Attributes.values;
+    tag.labelAttributes = dataset.Attributes.labels;
+    const {
+      xVar, yVar,
+    } = chart.settings;
+    // Create color scale
+    tag.colorScheme = d3Scale.scaleOrdinal();
+    // Get features' color ids
+    const colorIdSet = new Set();
+    tag.dataset.json.features.forEach((feature) => {
+      colorIdSet.add(feature.colorId);
+    });
+    // Set color scale's domain to the color id set and range to the currently active color scheme
+    tag.colorScheme
+      .domain([...colorIdSet])
+      .range(opts.controller.getState('global').cs.colors);
+    // Default label element is the first in the array of label attributes
+    [chart.settings.label.selected] = tag.labelAttributes;
+    chart.settings.tooltipLabel.selected = chart.settings.label.selected;
+    // Parse settings from URL parameters
+    tag.parseState(chart.settings, chart.styleSettings, 'urlParamKey');
+    const {
+      translationX, translationY, translationK,
+    } = chart.settings;
+    // If translation values (x, y, k) in URL params, create translation object
+    if (translationX.value && translationY.value && translationK.value) {
+      chart.transform = d3Zoom.zoomIdentity
+        .translate(translationX.value, translationY.value)
+        .scale(translationK.value);
+    }
+    tag.initialized = true;
+    // If x, and y-axis variables are selected, draw chart
+    if (xVar.selected && yVar.selected) {
+      drawChart(tag.dataset.json.features, xVar.selected, yVar.selected);
+    }
+  }
+
+  /**
+   * Draw gridlines according to scales.
+   *
+   */
+  function drawGrid() {
+    // If grid does not exist, draw it
+    if (!chart.grid) {
+      chart.yGrid = d3Axis.axisLeft(chart.yScale)
+        .tickPadding(5)
+        .tickSize(-chart.w)
+        .tickFormat('');
+      chart.xGrid = d3Axis.axisBottom(chart.xScale)
+        .tickPadding(5)
+        .tickSize(-chart.h)
+        .tickFormat('');
+      chart.grid = chart.svgGroup
+        .append('g')
+        .classed('grid', true);
+      chart.gridX = chart.grid
+        .append('g')
+        .classed('grid--x', true)
+        .attr('transform', `translate(0,${chart.h})`)
+        .call(chart.xGrid);
+      chart.gridY = chart.grid
+        .append('g')
+        .classed('grid--y', true)
+        .call(chart.yGrid);
+    // Otherwise, rescale grid
+    } else {
+      chart.gridX
+        .call(chart.xGrid.scale(chart.xScale));
+      chart.gridY
+        .call(chart.yGrid.scale(chart.yScale));
+    }
+  }
+
+  function toggleRegression(displayRegLine) {
+    const styleSetting = chart.styleSettings.regLine.display;
+    if (displayRegLine) {
+      // If current zoom equals initial zoom, call drawRegressionLine without scales.
+      if (d3Zoom.zoomTransform(chart.overlay.node()) === d3Zoom.zoomIdentity) {
+        drawRegressionLine(chart.regressionData);
+      // Otherwise rescale chart scales to current zoom level.
+      } else {
+        const t = d3Zoom.zoomTransform(chart.overlay.node());
+        const zx = t.rescaleX(chart.xScale);
+        const zy = t.rescaleY(chart.yScale);
+        drawRegressionLine(chart.regressionData, zx, zy, true);
+      }
+      // Remove previously applied style.
+      chart.regLine.style('visibility', null);
+    } else if (chart.regLine) {
+      chart.regLine.style('visibility', 'hidden');
+    }
+    styleSetting.value = displayRegLine;
+    opts.controller.setState(opts.subview, styleSetting.urlParamKey, (displayRegLine) ? 1 : 0);
+  }
+  /**
+   * Draw the regression line according to regression data.
+   * @param {object} regressionData - Object containing intercept and slope for current state
+   * @param {scale} zx - Scale for x-Axis rescaled according to current zoom and pan level
+   * @param {scale} zy - Scale for y-Axis rescaled according to current zoom and pan level
+   * @param {boolean} transition - Indicating whether to transition or not.
+   *
+   */
+  function drawRegressionLine(regressionData, zx, zy) {
+    const {
+      slope, intercept,
+    } = regressionData;
+    // If zx and zy are undefined, use unscaled chart scales.
+    const xs = zx || chart.xScale;
+    const ys = zy || chart.yScale;
+
+    const [x0, x1] = xs.domain();
+    const [y0, y1] = xs.domain().map(val => (slope * val) + intercept);
+    const reg0 = [xs(x0), ys(y0)];
+    const reg1 = [xs(x1), ys(y1)];
+
+    // If it does not exist yet, add the regression line to the chart.
+    chart.regLine =
+      chart.regLine ||
+      chart.canvas
+        .append('line')
+        .classed('regression--line', true);
+    chart.regLine
+      .attr('x1', reg0[0])
+      .attr('y1', reg0[1])
+      .attr('x2', reg1[0])
+      .attr('y2', reg1[1]);
+  }
+
+  function calculateRegData(xArr, yArr) {
+    // Calculate regression line intercept and slope for the data and save for later use.
+    const cov = covariance(xArr, yArr);
+    const slope = cov / d3Array.variance(xArr);
+    // const intercept = d3Array.mean(yArr) - slope * d3.mean(xArr);
+    return {
+      slope,
+      intercept: d3Array.mean(yArr) - (slope * d3Array.mean(xArr)),
+    };
+  }
+
+  /**
+   * Calculate covariance for two arrays of numbers
+   * @param {Number[]} array0 - First array
+   * @param {Number[]} array1 - Second array
+   * @returns {Number|Undefined} - Covariance or undefined
+   */
+  function covariance(array0, array1) {
+    let m0 = 0;
+    let m1 = 0;
+    let m01 = 0;
+    const n = array0.length;
+    let j = 0;
+    for (let i = 0; i < n; i += 1) {
+      const x = array0[i];
+      const y = array1[i];
+      j += 1;
+      const d0 = (x - m0) / j;
+      const d1 = (y - m1) / j;
+      m0 += d0;
+      m1 += d1;
+      m01 += ((j - 1) * d0 * d1) - (m01 / j);
+    }
+    if (j > 1 && n === array1.length) {
+      return (j / (j - 1)) * m01;
+    }
+    return undefined;
+  }
+
+  /**
+   * Draw the chart.
+   * @param {Object} data - Dataset object.
+   * @param {String} xVar - Key of the number property to use for the x-Axis.
+   * @param {String} yVar - Key of the property to use for the y-Axis.
+   */
+  function drawChart(data, xVar, yVar) {
+    chart.data = data;
+    chart.margin = {
+      top: 40,
+      left: 60,
+      bottom: 60,
+      right: 40,
+    };
+    // Calculate regression data
+    chart.regressionData = calculateRegData(
+      data.map(feature => feature.properties[xVar.key]),
+      data.map(feature => feature.properties[yVar.key]),
+    );
+
+    // Get width and height from client container size.
+    chart.w = chart.w ||
+      parseInt(tag.refs.scatterplot.clientWidth, 10) - chart.margin.left - chart.margin.right;
+    chart.h = chart.h ||
+      parseInt(tag.refs.scatterplot.clientHeight, 10) - chart.margin.top - chart.margin.bottom;
+
+    // Set up x and y scales as linear scales for a scatterplot
+    chart.xScale = chart.xScale || d3Scale.scaleLinear();
+    // Get array of values and set domain to [0, max] value in array
+    chart.xScale
+      .domain([0, 1.1 * d3Array.max(data, d => d.properties[xVar.key])])
+      .range([0, chart.w]);
+    chart.yScale = chart.yScale || d3Scale.scaleLinear();
+    chart.yScale
+      .domain([0, 1.1 * d3Array.max(data, d => d.properties[yVar.key])])
+      // In svg drawing starts in the upper left corner
+      .range([chart.h, 0]);
+    if (chart.transform && chart.transform !== d3Zoom.zoomIdentity) {
+      chart.xScale = chart.transform.rescaleX(chart.xScale);
+      chart.yScale = chart.transform.rescaleY(chart.yScale);
+      chart.zoomed = true;
+      tag.update();
+    }
+    // Update or initialize a quadtree for the points' coordinates.
+    if (chart.quadtree) {
+      chart.quadtree.removeAll(chart.data);
+    } else {
+      chart.quadtree = d3Quadtree.quadtree();
+    }
+    chart.quadtree
+      .x(d => chart.xScale(d.properties[xVar.key]))
+      .y(d => chart.yScale(d.properties[yVar.key]))
+      .addAll(data);
+    // Define x and y axis to use respective scales
+    chart.yAxis = d3Axis.axisLeft(chart.yScale)
+      .tickPadding(5)
+      .tickFormat(d3Format.format(',.2s'));
+    chart.xAxis = d3Axis.axisBottom(chart.xScale)
+      .tickPadding(5);
+    // Append svg with desired size and margins
+    chart.svg = chart.svg || d3Selection.select(tag.refs.scatterplot)
+      .insert('svg', ':first-child')
+      .attr('width', chart.w + chart.margin.right + chart.margin.left)
+      .attr('height', chart.h + chart.margin.top + chart.margin.bottom);
+    // Create uniform transition for all updates and inserts
+    const t = d3Transition.transition()
+      .duration(1000);
+    chart.svgGroup = chart.svgGroup || chart.svg
+      .append('g')
+      .attr('transform', `translate(${chart.margin.left},${chart.margin.top})`);
+    chart.canvas = chart.canvas || chart.svgGroup.append('svg')
+      .attr('width', chart.w)
+      .attr('height', chart.h)
+      .attr('class', 'area');
+    // Append overlay for panning and zooming.
+    chart.overlaygroup = chart.overlaygroup || chart.canvas.append('g')
+      .attr('class', 'overlaygroup');
+    // Append overlay for brushing.
+    chart.brushoverlay = chart.brushoverlay || chart.overlaygroup.append('g')
+      .attr('class', 'brush');
+    // Initialize zoom
+    chart.zoom = d3Zoom.zoom()
+      .on('zoom', onZoom)
+      .on('end', onZoomEnd);
+    // Append zoomable overlay
+    chart.overlay = chart.overlay || chart.overlaygroup.append('rect')
+      .attr('width', chart.w)
+      .attr('height', chart.h)
+      .attr('class', 'overlay')
+      .style('fill', 'none')
+      .style('pointer-events', 'all')
+      .style('cursor', 'move')
+      .call(chart.zoom);
+    // Data join for dots.
+    chart.dots = chart.canvas.selectAll('circle.dots')
+      .data(data, d => d.id);
+    // Remove exit selection.
+    chart.dots
+      .exit()
+      .remove();
+    // Enter new points and merge with existing
+    chart.dots = chart.dots
+      .enter()
+      .append('circle')
+      .classed('dots', true)
+      .merge(chart.dots)
+      .on('mouseenter', tooltip)
+      .on('mouseleave', tooltip);
+    // Transition from old to new position.
+    chart.dots
+      .transition(t)
+      .attr('cx', d => chart.xScale(d.properties[xVar.key]))
+      .attr('cy', d => chart.yScale(d.properties[yVar.key]))
+      .attr('r', chart.styleSettings.dots.radius.value)
+      .style('fill', (d) => {
+        const color = chart.styleSettings.dots.fill.multiHue.value
+          ? tag.colorScheme(d.colorId)
+          : chart.styleSettings.dots.fill.value;
+        return d3Color.rgb(color);
+      });
+    // Data join for labels.
+    chart.labels = chart.canvas.selectAll('.label--scatter')
+      .data(data, d => d.id);
+    // Remove exit selection.
+    chart.labels.exit().remove();
+    // Enter new labels and merge with existing.
+    chart.labels = chart.labels
+      .enter()
+      .append('text')
+      .merge(chart.labels)
+      .classed('label label--scatter', true);
+    // Transition from old label positioning to new one.
+    chart.labels
+      .attr('x', d => chart.xScale(d.properties[xVar.key]))
+      .attr('y', d => chart.yScale(d.properties[yVar.key]))
+      .text(d => d.properties[chart.settings.label.selected.key])
+      .style('visibility', () => {
+        const visibility = chart.styleSettings.labels.display.value
+          ? 'visible'
+          : 'hidden';
+        return visibility;
+      })
+      .classed('label', true)
+      .style('fill', d3Color.rgb(chart.styleSettings.labels.fill.value))
+      .attr('dx', '0.35em')
+      .attr('dy', '0.25em');
+    // If x-Axis exists, transition to new scale and relabel x-Axis
+    if (chart.xAx) {
+      chart.xAx
+        .transition(t)
+        .call(chart.xAxis);
+      chart.xAxisLabel.text(xVar.name);
+    // Else, append the x-Axis
+    } else {
+      chart.xAx = chart.svgGroup
+        .append('g')
+        .classed('axis axis--x', true)
+        .attr('transform', `translate(0,${chart.h})`)
+        .call(chart.xAxis);
+      chart.xAxisLabel = chart.xAx
+        .append('text')
+        .classed('label axis--label axis--label__x', true)
+        .attr('x', chart.w)
+        .attr('dy', '2.5em')
+        .text(xVar.name);
+    }
+    // If y-Axis exists, transition to new scale and relabel y-Axis
+    if (chart.yAx) {
+      chart.yAx
+        .transition(t)
+        .call(chart.yAxis);
+      chart.yAxisLabel.text(yVar.name);
+    // Else, append the y-Axis to the SVG.
+    } else {
+      chart.yAx = chart.svgGroup
+        .append('g')
+        .classed('axis axis--y', true)
+        .call(chart.yAxis);
+      chart.yAxisLabel = chart.yAx
+        .append('text')
+        .classed('label axis--label axis--label__x', true)
+        .attr('transform', 'rotate(-90)')
+        .attr('dy', '-2.5em')
+        .text(yVar.name);
+    }
+    // Initialize brush
+    chart.brush = d3Brush.brush()
+      .on('brush', onBrush)
+      .on('end', onBrushEnd);
+    toggleRegression(chart.styleSettings.regLine.display.value);
+    toggleGrid(chart.styleSettings.grid.display.value);
+    toggleLabels(chart.styleSettings.labels.display.value);
+    chart.created = true;
+  }
+  /**
+   * On brush end, activate buttons to interact with the brushed selection.
+   *
+   */
+  function onBrushEnd() {
+    // If brush selection exists, set chart brushed state to true
+    if (d3Brush.brushSelection(this)) {
+      chart.brushed = true;
+      tag.update();
+    // Otherwise reset all points to have normal appearance
+    } else {
+      chart.dots
+        .style('fill-opacity', 1);
+    }
+  }
+  /**
+   * Display or hide tooltip according to mouse position.
+   * @returns {Function} Function to handle mouse events and display tooltips
+   */
+  function toggleTooltip() {
+    const tooltipContainer = d3Selection.select(tag.refs.scatterplot)
+      .append('span')
+      .classed('tooltip c-bubble', true)
+      .style('display', 'none');
+    const f = d3Format.format(',.2s');
+    return function eventHandler(d) {
+      // Get event type.
+      const { type } = d3Selection.event;
+      // On 'mouseenter' event, display tooltip with data of x- and y-axis attribute.
+      if (type === 'mouseenter') {
+        const { xVar, yVar, tooltipLabel } = chart.settings;
+        tooltipContainer.html(`<h4 class='c-heading c-text--loud'>
+                      ${d.properties[tooltipLabel.selected.key]}
+                    </h4>
+                    <p class='c-paragraph'>${xVar.selected.name}: ${f(d.properties[xVar.selected.key])}</p>
+                    <p class='c-paragraph'>${yVar.selected.name}: ${f(d.properties[yVar.selected.key])}</p>
+                    `);
+        tooltipContainer.style('display', 'block');
+        // Position tooltip
+        const {
+          height,
+          width,
+        } = tooltipContainer.node().getBoundingClientRect();
+        const [left, top] = d3Selection.mouse(tag.refs.scatterplot);
+        // If mouse position is in the left half, display tooltip on the right
+        if (left < tag.refs.scatterplot.clientWidth / 2) {
+          tooltipContainer
+            .classed('c-bubble--right', true)
+            .classed('c-bubble--left', false)
+            .style('top', `${top - (height / 2)}px`)
+            .style('left', `${left + 30}px`);
+
+        // Otherwise, display tooltip on the left
+        } else {
+          tooltipContainer
+            .classed('c-bubble--left', true)
+            .classed('c-bubble--right', false)
+            .style('top', `${top - (height / 2)}px`)
+            .style('left', `${left - width - 30}px`);
+        }
+      // On 'mouseleave' event, hide the tooltip.
+      } else if (type === 'mouseleave') {
+        tooltipContainer.style('display', 'none');
+      }
+    };
+  }
+
+  /**
+   * Resize chart according to curent on-screen container size.
+   *
+   *
+   */
+  function resize() {
+    if (!chart.created) return;
+    const {
+      clientWidth,
+      clientHeight,
+    } = tag.refs.scatterplot;
+    const { xVar, yVar } = chart.settings;
+    chart.w = parseInt(clientWidth, 10) - chart.margin.left - chart.margin.right;
+    chart.h = parseInt(clientHeight, 10) - chart.margin.top - chart.margin.bottom;
+
+    chart.xScale.range([0, chart.w]);
+    chart.yScale.range([chart.h, 0]);
+
+    chart.svg
+      .attr('width', chart.w + chart.margin.right + chart.margin.left)
+      .attr('height', chart.h + chart.margin.top + chart.margin.bottom);
+
+    chart.svg.select('.axis--x')
+      .attr('transform', `translate(0,${chart.h})`)
+      .call(chart.xAxis);
+    chart.svg.select('.axis--y')
+      .call(chart.yAxis);
+
+    chart.canvas
+      .attr('width', chart.w)
+      .attr('height', chart.h);
+    if (chart.isBrush) chart.brushoverlay.call(chart.brush);
+    chart.overlay
+      .attr('width', chart.w)
+      .attr('height', chart.h);
+    chart.dots
+      .attr('cx', d =>
+        chart.xScale(d.properties[xVar.selected.key]))
+      .attr('cy', d =>
+        chart.yScale(d.properties[yVar.selected.key]));
+    chart.labels
+      .attr('x', d =>
+        chart.xScale(d.properties[xVar.selected.key]))
+      .attr('y', d =>
+        chart.yScale(d.properties[yVar.selected.key]));
+    chart.xAxisLabel.attr('x', chart.w);
+  }
+  /**
+   * Zoom to current brush extent.
+   *
+   */
+  function zoomToBrush() {
+    if (chart.extent) {
+      // Calculate zoom to fit brush extent
+      const [[x0, y0], [x1, y1]] = chart.extent;
+      const k = 0.9 / Math.max((x1 - x0) / chart.w, (y1 - y0) / chart.h);
+      const tx = (chart.w - (k * (x0 + x1))) / 2;
+      const ty = (chart.h - (k * (y0 + y1))) / 2;
+      // Zoom to brush extent
+      chart.overlay
+        .transition()
+        .duration(1000)
+        .call(chart.zoom.transform, d3Zoom.zoomIdentity.translate(tx, ty).scale(k));
+      // Reset brush after zooming is complete
+      resetBrush();
+    }
+  }
+  /**
+   * Reset pan & zoom to intial values
+   *
+   */
+  function resetZoom() {
+    chart.transform = d3Zoom.zoomIdentity;
+    const {
+      xVar, yVar,
+    } = chart.settings;
+    chart.overlay
+      .transition()
+      .duration(1000)
+      .call(chart.zoom.transform, chart.transform);
+
+    const data = chart.settings.showSelection.value
+      ? [...tag.dataset.selection]
+      : tag.dataset.json.features;
+    drawChart(data, xVar.selected, yVar.selected);
+  }
+  /**
+   * Reset brush extent and remove brush.
+   *
+   */
+  function resetBrush() {
+    if (chart.extent) {
+      chart.brushoverlay.call(chart.brush.move, null);
+    }
+  }
+  /**
+   * Toggle between brushing and zooming/panning
+   * @param {Event} evt - Event
+   */
+  function toggleZoom(evt) {
+    // If interaction should be set to panning & zooming
+    if (evt.target.value === 'panZoom') {
+      // Remove brush event handlers and pointer events
+      chart.brushoverlay
+        .on('.brush', null)
+        .style('pointer-events', 'none');
+      // Set pan & zoom overlay to receive pointer events
+      chart.overlay
+        .style('pointer-events', 'all')
+        .style('cursor', 'move')
+        .call(chart.zoom);
+      // Remove crosshair cursor style
+      chart.overlaygroup.select('.extent').style('cursor', null);
+      chart.isZoom = true;
+      chart.isBrush = false;
+    // Otherwise set interaction to rectangular select
+    } else {
+      // Remove pointer events from pan & zoom overlay
+      chart.overlay
+        .on('.zoom', null)
+        .style('pointer-events', 'none');
+      // Add pointer events to brush overlay
+      chart.brushoverlay
+        .call(chart.brush)
+        .style('pointer-events', 'all');
+      // Set cursor style to crosshair
+      chart.overlaygroup
+        .select('.background').style('cursor', 'crosshair')
+        .select('.extent').style('cursor', 'move');
+      chart.isZoom = false;
+      chart.isBrush = true;
+    }
+  }
+  /**
+   * ZoomEnd event handler
+   * On zoom end, change state to reflect current zoom
+   *
+   */
+  function onZoomEnd() {
+    const t = d3Selection.event.transform;
+
+    const {
+      translationX, translationY, translationK,
+    } = chart.settings;
+
+    translationX.value = t.x;
+    translationY.value = t.y;
+    translationK.value = t.k;
+    // If there is no current zoom level (i.e. transform equals zoomIdentity), remove state and return
+    if (t === d3Zoom.zoomIdentity) {
+      Object.keys(t).forEach((key) => {
+        opts.controller.removeState(opts.subview, 't'.concat(key));
+      });
+    } else {
+      Object.keys(t).forEach((key) => {
+        opts.controller.setState(opts.subview, 't'.concat(key), parseFloat(t[key]).toFixed(2));
+      });
+    }
+  }
+  /**
+   * Event listener - On zooming, transform scales and points accordingly
+   *
+   */
+  function onZoom() {
+    // Get d3 zoom transform event
+    const t = d3Selection.event.transform;
+    const {
+      xVar, yVar,
+    } = chart.settings;
+    // Check if current transformations deviates from zoomIdentity (origin)
+    if (t === d3Zoom.zoomIdentity) {
+      chart.zoomed = false;
+    } else {
+      chart.zoomed = true;
+    }
+    // Update tag to make reset zoom button available
+    tag.update();
+    // Create new rescaled scales zx, zy by rescaling current chart scales.
+    const zx = t.rescaleX(chart.xScale);
+    const zy = t.rescaleY(chart.yScale);
+    // Rescale x & y-axis
+    chart.svg.select('.axis--x')
+      .call(chart.xAxis.scale(zx));
+    chart.svg.select('.axis--y')
+      .call(chart.yAxis.scale(zy));
+    // Rescale grid lines, if grid is active.
+    if (chart.grid) {
+      chart.gridX
+        .call(chart.xGrid.scale(zx));
+      chart.gridY
+        .call(chart.yGrid.scale(zy));
+    }
+    // Rescale the regression line's points.
+    if (chart.regLine) drawRegressionLine(chart.regressionData, zx, zy);
+    // Recalculate positions of dots according to the new scales.
+    chart.dots
+      .attr('cx', d => zx(d.properties[xVar.selected.key]))
+      .attr('cy', d => zy(d.properties[yVar.selected.key]));
+    // Recalculate positions of labels according to new scales.
+    chart.labels
+      .attr('x', d => zx(d.properties[xVar.selected.key]))
+      .attr('y', d => zy(d.properties[yVar.selected.key]));
+    // If a brush exists, move it according to the new scales.
+    if (chart.extent) {
+      chart.brushoverlay.call(chart.brush.move, [t.apply(chart.extent[0]), t.apply(chart.extent[1])]);
+    }
+  }
+  /**
+   * Make all data points inside the brush the current selection.
+   * @todo Implement this function
+   */
+  function brushToSelection() {
+    const newSelection = [];
+    opts.controller.clearSelection();
+    chart.dots
+      .filter(d => d.selected)
+      .each((d) => {
+        const datum = d;
+        delete datum.selected;
+        newSelection.push(datum);
+      });
+    opts.controller.addToSelection(newSelection);
+  }
+  /**
+   * Add points in the current brush extent to the selection.
+   *
+   */
+  function addToSelection() {
+    const selection = new Set();
+    chart.dots
+      .filter(d => d.selected)
+      .each((d) => {
+        const datum = d;
+        selection.add(datum);
+        delete datum.selected;
+      });
+    opts.controller.addToSelection(selection);
+  }
+  /**
+   * Event listener - On brushing, select the points inside the brush extent
+   * and color them accordingly
+   *
+   */
+  function onBrush() {
+    const selection = d3Brush.brushSelection(this);
+    const transformation = d3Zoom.zoomTransform(chart.overlay.node());
+    // If there is a selection, remove selection attribute from all dots
+    if (selection) {
+      chart.brushed = true;
+      chart.dots.each((d) => {
+        const datum = d;
+        delete datum.selected;
+      });
+      // If interaction is rect. select, get brush extent
+      if (chart.isBrush) {
+        chart.extent = selection.map(coordinate => transformation.invert(coordinate));
+      }
+      // Search quadtree by extent
+      const [[x0, y0], [x1, y1]] = chart.extent;
+      search(chart.quadtree, x0, y0, x1, y1);
+      // Style dots with selected attribute assigned by quadtree
+      chart.dots
+        .classed('selected', d => d.selected)
+        .style('fill-opacity', (d) => {
+          const opacity = d.selected ? 1 : 0.4;
+          return opacity;
+        });
+    // If there is no selection, remove brush
+    } else {
+      chart.extent = null;
+      chart.dots.style('fill-opacity', null);
+      chart.brushed = false;
+    }
+  }
+  /**
+   * Search in quadtree structure for points inside selection extent.
+   * @param {Object} quadtree - D3 quadtree object to search in
+   * @param {Number} x0 - Lower boundary of selection xAxis
+   * @param {Number} y0 - Lower boundary of selection yAxis
+   * @param {Number} x3 - Upper boundary of selection xAxis
+   * @param {Number} y3 - Upper boundary of selection yAxis
+   */
+  function search(quadtree, x0, y0, x3, y3) {
+    const x = chart.xScale;
+    const y = chart.yScale;
+    const xVar = chart.settings.xVar.selected.key;
+    const yVar = chart.settings.yVar.selected.key;
+    quadtree.visit((node, x1, y1, x2, y2) => {
+      if (!node.length) {
+        do {
+          const currentNode = node;
+          const p = node.data.properties;
+          currentNode.data.selected =
+            (x(p[xVar]) >= x0) && (x(p[xVar]) < x3) &&
+            (y(p[yVar]) >= y0) && (y(p[yVar]) < y3);
+        /* eslint-disable no-param-reassign */
+        } while ((node = node.next));
+      /* eslint-enable no-param-reassign */
+      }
+      return x1 >= x3 || y1 >= y3 || x2 < x0 || y2 < y0;
+    });
+  }
+</script>
+</chart-scatter>

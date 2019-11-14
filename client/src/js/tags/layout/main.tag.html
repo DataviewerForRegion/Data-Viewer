@@ -1,0 +1,92 @@
+/**
+ * Copyright (c) 2018 Sebastian Altenhuber, Patrick Humme
+ *
+ * @file Layout for content and navigation side-bar, includes all logic for mounting different tags
+ * @author Sebastian Altenhuber <sebastian.altenhuber@gmail.com>
+ * @author Patrick Humme <pathumme@gmail.com>
+ */
+<main-content>
+  <div class="o-grid o-panel o-panel--nav-top">
+    <div class={"o-grid__cell--width-15@large": sidebarLocked, o-grid__cell: sidebarLocked}>
+      <nav-sidebar controller={ opts.controller } state={ opts.state } />
+    </div>
+    <div if={ !sidebarLocked } 
+      class="o-grid__cell--width-fixed o-grid__cell--hidden o-grid__cell--visible@large o-panel-container" 
+      style="width:30px;">
+      <div class="magic-drawout" onmouseover={ openMenu }>
+        <div class="magic-drawout__title">
+          <i class="fa fa-angle-double-right fa-fw fa-2x"></i>
+          <div class="menu-text">
+            Menu
+          </div>
+          <i class="fa fa-angle-double-right fa-fw fa-2x"></i>
+        </div>
+      </div>
+    </div>
+    <div class="o-grid__cell o-grid__cell o-panel-container">
+      <div class="o-grid">
+        <content class="o-grid__cell o-panel" />
+      </div>
+    </div>
+  </div>
+  <script type="es6">
+    const tag = this;
+    tag.state = opts.state;
+    tag.openMenu = openMenu;
+    tag.sidebarLocked = false;
+
+    tag.state.on('sidebar::lock', () => {
+      tag.update({ sidebarLocked: true });
+    });
+    tag.state.on('sidebar::unlock', () => {
+      tag.update({ sidebarLocked: false });
+    });
+
+
+    function openMenu() {
+      tag.state.trigger('sidebar::toggle');
+    }
+
+    // On view change, mount the correct tag to the content tag
+    tag.state.on('view::change', () => {
+      // View dataset view always mounts view-content
+      if (tag.state.view === 'viewDataset') {
+        riot.mount('content', 'view-content', {
+          state: tag.state,
+          controller: opts.controller,
+        });
+      // In admin view, mount welcome page if no other subview is specified
+      } else if (tag.state.view === 'admin') {
+        if (!tag.state.user.isLoggedIn) riot.route('/login');
+        if (!tag.state.subview) tag.state.subview = 'content';
+        riot.mount('content', `${tag.state.view}-${tag.state.subview}`, {
+          state: tag.state,
+          controller: opts.controller,
+        });
+      }
+    });
+    // On subview change, mount the correct tag to the content tag
+    tag.state.on('subview::change', () => {
+      // View dataset view gets treated differently
+      if (tag.state.view !== 'viewDataset') {
+        // Mounting login page which has its own view
+        if (tag.state.view === 'login') {
+          riot.mount('content', tag.state.view, {
+            state: tag.state,
+            controller: opts.controller,
+          });
+        // If user is not logged in and tries to access admin view, redirect to login page
+        } else if (tag.state.view === 'admin' && !opts.state.user.isLoggedIn) {
+          riot.route(`/login?next=${tag.state.subview}`);
+        // Otherwise mount the correct subview to the content tag
+        } else {
+          console.log(tag.state.view, tag.state.subview);
+          riot.mount('content', `${tag.state.view}-${tag.state.subview}`, {
+            state: tag.state,
+            controller: opts.controller,
+          });
+        }
+      }
+    });
+  </script>
+</main-content>
